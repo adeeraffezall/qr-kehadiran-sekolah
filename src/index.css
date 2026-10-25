@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased font-sans;
+  }
+}
+
+/* Print Styles for QR Student Cards */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  .no-print,
+  nav,
+  aside,
+  header,
+  footer,
+  button,
+  .print-hide {
+    display: none !important;
+  }
+
+  .print-container {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .qr-card-page {
+    page-break-after: always;
+    break-after: page;
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .qr-card-item {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    border: 1.5px dashed #475569 !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+  }
+}

@@ -1,0 +1,262 @@
+import { 
+  collection, 
+  getDocs, 
+  getDoc,
+  doc, 
+  setDoc, 
+  updateDoc, 
+  serverTimestamp,
+  query,
+  where,
+  orderBy
+} from 'firebase/firestore';
+import { db } from './firebase';
+import { Student } from '../types';
+import { generateRandomToken, hashTokenClient } from './qrService';
+import { createAuditLog } from './auditService';
+import * as XLSX from 'xlsx';
+
+export async function getStudents(classIdFilter?: string, activeOnly: boolean = false): Promise<Student[]> {
+  const studentsRef = collection(db, 'students');
+  let q = query(studentsRef, orderBy('fullName', 'asc'));
+
+  if (classIdFilter && classIdFilter !== 'ALL') {
+    q = query(studentsRef, where('classId', '==', classIdFilter), orderBy('fullName', 'asc'));
+  }
+
+  const snap = await getDocs(q);
+  let list = snap.docs.map(d => ({
+    id: d.id,
+    ...d.data()
+  } as Student));
+
+  if (activeOnly) {
+    list = list.filter(s => s.active);
+  }
+
+  return list;
+}
+
+export async function getStudentById(studentId: string): Promise<Student | null> {
+  const ref = doc(db, 'students', studentId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as Student;
+}
+
+export async function addStudent(
+  actorUid: string,
+  actorEmail: string,
+  data: {
+    fullName: string;
+    studentNumber?: string;
+    classId: string;
+  }
+): Promise<{ studentId: string; plainToken: string }> {
+  const studentsRef = collection(db, 'students');
+  const newDoc = doc(studentsRef);
+  
+  // Hasilkan token unik kriptografik
+  const plainToken = generateRandomToken();
+  const tokenHash = await hashTokenClient(plainToken);
+  const now = serverTimestamp();
+
+  const studentData: Omit<Student, 'id'> = {
+    fullName: data.fullName.trim().toUpperCase(),
+    studentNumber: data.studentNumber ? data.studentNumber.trim() : '',
+    classId: data.classId,
+    active: true,
+    qrTokenHash: tokenHash,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  await setDoc(newDoc, studentData);
+
+  await createAuditLog(
+    actorUid,
+    actorEmail,
+    'ADD_STUDENT',
+    'STUDENT',
+    newDoc.id,
+    'Pendaftaran murid baharu dan penjanaan QR',
+    null,
+    { fullName: data.fullName, classId: data.classId }
+  );
+
+  return { studentId: newDoc.id, plainToken };
+}
+
+export async function updateStudent(
+  actorUid: string,
+  actorEmail: string,
+  studentId: string,
+  data: Partial<Student>,
+  reason?: string
+): Promise<void> {
+  const ref = doc(db, 'students', studentId);
+  const oldSnap = await getDoc(ref);
+  const oldData = oldSnap.data();
+
+  const updatePayload = {
+    ...data,
+    updatedAt: serverTimestamp()
+  };
+
+  await updateDoc(ref, updatePayload);
+
+  await createAuditLog(
+    actorUid,
+    actorEmail,
+    'UPDATE_STUDENT',
+    'STUDENT',
+    studentId,
+    reason || 'Kemaskini data profil murid',
+    oldData,
+    data
+  );
+}
+
+export async function transferStudentClass(
+  actorUid: string,
+  actorEmail: string,
+  studentId: string,
+  newClassId: string,
+  newClassName: string,
+  reason: string
+): Promise<void> {
+  const ref = doc(db, 'students', studentId);
+  const oldSnap = await getDoc(ref);
+  const oldClassId = oldSnap.data()?.classId;
+
+  await updateDoc(ref, {
+    classId: newClassId,
+    updatedAt: serverTimestamp()
+  });
+
+  await createAuditLog(
+    actorUid,
+    actorEmail,
+    'TRANSFER_STUDENT_CLASS',
+    'STUDENT',
+    studentId,
+    reason || `Pertukaran ke kelas ${newClassName}`,
+    { classId: oldClassId },
+    { classId: newClassId, newClassName }
+  );
+}
+
+export async function toggleStudentActive(
+  actorUid: string,
+  actorEmail: string,
+  studentId: string,
+  active: boolean,
+  reason: string
+): Promise<void> {
+  const ref = doc(db, 'students', studentId);
+  const oldSnap = await getDoc(ref);
+
+  await updateDoc(ref, {
+    active,
+    updatedAt: serverTimestamp()
+  });
+
+  await createAuditLog(
+    actorUid,
+    actorEmail,
+    active ? 'ACTIVATE_STUDENT' : 'DEACTIVATE_STUDENT',
+    'STUDENT',
+    studentId,
+    reason,
+    { active: oldSnap.data()?.active },
+    { active }
+  );
+}
+
+export interface ImportRow {
+  rowNumber: number;
+  fullName: string;
+  studentNumber: string;
+  className: string;
+  classId?: string;
+  isValid: boolean;
+  errors: string[];
+}
+
+export function parseAndValidateImport(
+  rawRows: any[],
+  availableClasses: { id: string; name: string }[],
+  existingStudentNumbers: Set<string>
+): ImportRow[] {
+  const classNameMap = new Map<string, string>();
+  availableClasses.forEach(c => classNameMap.set(c.name.trim().toUpperCase(), c.id));
+
+  const seenInBatch = new Set<string>();
+
+  return rawRows.map((row, idx) => {
+    const rowNumber = idx + 2; // Mengambil kira baris tajuk
+    const fullName = String(row['NAMA PENUH'] || row['NAMA'] || row['Nama'] || row['Full Name'] || '').trim();
+    const studentNumber = String(row['NO. MURID'] || row['NO MURID'] || row['No Murid'] || row['Student ID'] || '').trim();
+    const className = String(row['KELAS'] || row['Kelas'] || row['Class'] || '').trim();
+
+    const errors: string[] = [];
+
+    if (!fullName || fullName.length < 3) {
+      errors.push('Nama murid wajib diisi (minimum 3 aksara).');
+    }
+
+    if (!className) {
+      errors.push('Nama kelas wajib diisi.');
+    } else {
+      const matchedClassId = classNameMap.get(className.toUpperCase());
+      if (!matchedClassId) {
+        errors.push(`Kelas "${className}" tidak wujud dalam sistem. Sila cipta kelas terlebih dahulu.`);
+      }
+    }
+
+    if (studentNumber) {
+      if (existingStudentNumbers.has(studentNumber.toUpperCase())) {
+        errors.push(`No. Murid "${studentNumber}" telah didaftarkan dalam sistem.`);
+      }
+      if (seenInBatch.has(studentNumber.toUpperCase())) {
+        errors.push(`No. Murid "${studentNumber}" berulang dalam fail import ini.`);
+      }
+      seenInBatch.add(studentNumber.toUpperCase());
+    }
+
+    return {
+      rowNumber,
+      fullName: fullName.toUpperCase(),
+      studentNumber,
+      className,
+      classId: classNameMap.get(className.toUpperCase()),
+      isValid: errors.length === 0,
+      errors
+    };
+  });
+}
+
+export function downloadStudentImportTemplate(): void {
+  const sampleData = [
+    {
+      'NAMA PENUH': 'AHMAD BIN ABDULLAH',
+      'NO. MURID': 'M1001',
+      'KELAS': '1 ARIF'
+    },
+    {
+      'NAMA PENUH': 'SITI NURHALIZA BINTI OTHMAN',
+      'NO. MURID': 'M1002',
+      'KELAS': '1 BESTARI'
+    },
+    {
+      'NAMA PENUH': 'TAN WEI JIE',
+      'NO. MURID': 'M1003',
+      'KELAS': '2 CEMERLANG'
+    }
+  ];
+
+  const ws = XLSX.utils.json_to_sheet(sampleData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Templat Import Murid');
+  XLSX.writeFile(wb, 'Templat_Import_Murid_SK.xlsx');
+}

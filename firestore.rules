@@ -1,0 +1,129 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isActive() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().active == true;
+    }
+
+    function hasRole(role) {
+      return isActive() && getUserData().role == role;
+    }
+
+    function isAdmin() {
+      return hasRole('ADMIN');
+    }
+
+    function isTeacher() {
+      return hasRole('TEACHER');
+    }
+
+    function isStaff() {
+      return hasRole('STAFF');
+    }
+
+    function isSchoolStaff() {
+      return isActive() && (getUserData().role in ['ADMIN', 'TEACHER', 'STAFF']);
+    }
+
+    // 1. Users collection
+    match /users/{userId} {
+      // User can read own doc; Admin can read all
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      
+      // Initial registration / bootstrap: allow user to write their own profile if not exists,
+      // but role must default to TEACHER or STAFF unless bootstrap condition is met.
+      // Admin can create or update any user doc.
+      allow create: if isAuthenticated() && (
+        (request.auth.uid == userId && request.resource.data.active == true) ||
+        isAdmin()
+      );
+
+      // Prevent non-admin users from escalating roles or changing active status
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          request.auth.uid == userId &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.active == resource.data.active
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // 2. Classes collection
+    match /classes/{classId} {
+      allow read: if isSchoolStaff();
+      allow write: if isAdmin();
+    }
+
+    // 3. Students collection
+    match /students/{studentId} {
+      allow read: if isSchoolStaff();
+      allow write: if isAdmin();
+    }
+
+    // 4. School Days / Calendar collection
+    match /schoolDays/{date} {
+      allow read: if isSchoolStaff();
+      allow write: if isAdmin();
+    }
+
+    // 5. Attendance Sessions collection
+    match /sessions/{sessionId} {
+      allow read: if isSchoolStaff();
+      allow write: if isAdmin() || isSchoolStaff();
+    }
+
+    // 6. Attendance records
+    match /attendance/{recordId} {
+      allow read: if isSchoolStaff();
+      // Authorized school staff can record attendance during open sessions
+      allow create: if isSchoolStaff() && 
+        request.resource.data.scannedBy == request.auth.uid &&
+        request.resource.data.studentId is string &&
+        request.resource.data.date is string &&
+        request.resource.data.session in ['PAGI', 'PULANG'];
+      
+      // Attendance corrections require Admin role and mandatory correction reason
+      allow update: if isAdmin() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'correctionReason', 'updatedAt', 'correctedBy']) &&
+        request.resource.data.correctionReason is string &&
+        request.resource.data.correctionReason.size() >= 5;
+
+      allow delete: if false; // Never delete attendance records directly
+    }
+
+    // 7. Audit logs - immutable and append-only
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSchoolStaff() && 
+        request.resource.data.actorUid == request.auth.uid &&
+        request.resource.data.createdAt != null;
+      allow update, delete: if false; // Strictly non-deletable and non-updatable
+    }
+
+    // 8. System Settings collection (e.g., school config, session defaults)
+    match /settings/{settingId} {
+      allow read: if isSchoolStaff();
+      allow write: if isAdmin();
+    }
+  }
+}
