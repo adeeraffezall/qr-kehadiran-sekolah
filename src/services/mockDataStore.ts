@@ -314,7 +314,15 @@ export class MockDataStore {
   private data: LocalDatabaseSchema;
 
   constructor() {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    let raw: string | null = null;
+    if (typeof localStorage !== 'undefined') {
+      try {
+        raw = localStorage.getItem(STORAGE_KEY);
+      } catch {
+        raw = null;
+      }
+    }
+
     if (raw) {
       try {
         this.data = JSON.parse(raw);
@@ -329,10 +337,12 @@ export class MockDataStore {
   }
 
   private save() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
-    } catch (e) {
-      console.warn('LocalStorage save failed:', e);
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+      } catch (e) {
+        console.warn('LocalStorage save failed:', e);
+      }
     }
   }
 

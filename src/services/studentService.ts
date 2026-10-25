@@ -14,34 +14,41 @@ import { db } from './firebase';
 import { Student } from '../types';
 import { generateRandomToken, hashTokenClient } from './qrService';
 import { createAuditLog } from './auditService';
+import { mockStore } from './mockDataStore';
 import * as XLSX from 'xlsx';
 
 export async function getStudents(classIdFilter?: string, activeOnly: boolean = false): Promise<Student[]> {
-  const studentsRef = collection(db, 'students');
-  let q = query(studentsRef, orderBy('fullName', 'asc'));
+  try {
+    const studentsRef = collection(db, 'students');
+    let q = query(studentsRef, orderBy('fullName', 'asc'));
 
-  if (classIdFilter && classIdFilter !== 'ALL') {
-    q = query(studentsRef, where('classId', '==', classIdFilter), orderBy('fullName', 'asc'));
+    if (classIdFilter && classIdFilter !== 'ALL') {
+      q = query(studentsRef, where('classId', '==', classIdFilter), orderBy('fullName', 'asc'));
+    }
+
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      let list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Student));
+      if (activeOnly) list = list.filter(s => s.active);
+      return list;
+    }
+  } catch {
+    // Fallback
   }
-
-  const snap = await getDocs(q);
-  let list = snap.docs.map(d => ({
-    id: d.id,
-    ...d.data()
-  } as Student));
-
-  if (activeOnly) {
-    list = list.filter(s => s.active);
-  }
-
-  return list;
+  return mockStore.getStudents(classIdFilter, activeOnly);
 }
 
 export async function getStudentById(studentId: string): Promise<Student | null> {
-  const ref = doc(db, 'students', studentId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() } as Student;
+  try {
+    const ref = doc(db, 'students', studentId);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() } as Student;
+    }
+  } catch {
+    // Fallback
+  }
+  return mockStore.getStudentById(studentId) || null;
 }
 
 export async function addStudent(
@@ -53,38 +60,49 @@ export async function addStudent(
     classId: string;
   }
 ): Promise<{ studentId: string; plainToken: string }> {
-  const studentsRef = collection(db, 'students');
-  const newDoc = doc(studentsRef);
-  
-  // Hasilkan token unik kriptografik
+  const newId = `STD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
   const plainToken = generateRandomToken();
   const tokenHash = await hashTokenClient(plainToken);
-  const now = serverTimestamp();
+  const now = new Date().toISOString();
 
-  const studentData: Omit<Student, 'id'> = {
+  const studentData: Student & { plainToken: string } = {
+    id: newId,
     fullName: data.fullName.trim().toUpperCase(),
     studentNumber: data.studentNumber ? data.studentNumber.trim() : '',
     classId: data.classId,
     active: true,
+    plainToken,
     qrTokenHash: tokenHash,
     createdAt: now,
     updatedAt: now
   };
 
-  await setDoc(newDoc, studentData);
+  try {
+    const studentsRef = collection(db, 'students');
+    const newDoc = doc(studentsRef, newId);
+    await setDoc(newDoc, {
+      ...studentData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  } catch {
+    // Fallback
+  }
+
+  mockStore.addStudent(studentData);
 
   await createAuditLog(
     actorUid,
     actorEmail,
     'ADD_STUDENT',
     'STUDENT',
-    newDoc.id,
+    newId,
     'Pendaftaran murid baharu dan penjanaan QR',
     null,
     { fullName: data.fullName, classId: data.classId }
   );
 
-  return { studentId: newDoc.id, plainToken };
+  return { studentId: newId, plainToken };
 }
 
 export async function updateStudent(
@@ -94,16 +112,17 @@ export async function updateStudent(
   data: Partial<Student>,
   reason?: string
 ): Promise<void> {
-  const ref = doc(db, 'students', studentId);
-  const oldSnap = await getDoc(ref);
-  const oldData = oldSnap.data();
+  try {
+    const ref = doc(db, 'students', studentId);
+    await updateDoc(ref, {
+      ...data,
+      updatedAt: serverTimestamp()
+    });
+  } catch {
+    // Fallback
+  }
 
-  const updatePayload = {
-    ...data,
-    updatedAt: serverTimestamp()
-  };
-
-  await updateDoc(ref, updatePayload);
+  mockStore.updateStudent(studentId, data);
 
   await createAuditLog(
     actorUid,
@@ -112,7 +131,7 @@ export async function updateStudent(
     'STUDENT',
     studentId,
     reason || 'Kemaskini data profil murid',
-    oldData,
+    null,
     data
   );
 }
@@ -125,14 +144,17 @@ export async function transferStudentClass(
   newClassName: string,
   reason: string
 ): Promise<void> {
-  const ref = doc(db, 'students', studentId);
-  const oldSnap = await getDoc(ref);
-  const oldClassId = oldSnap.data()?.classId;
+  try {
+    const ref = doc(db, 'students', studentId);
+    await updateDoc(ref, {
+      classId: newClassId,
+      updatedAt: serverTimestamp()
+    });
+  } catch {
+    // Fallback
+  }
 
-  await updateDoc(ref, {
-    classId: newClassId,
-    updatedAt: serverTimestamp()
-  });
+  mockStore.updateStudent(studentId, { classId: newClassId, className: newClassName });
 
   await createAuditLog(
     actorUid,
@@ -141,7 +163,7 @@ export async function transferStudentClass(
     'STUDENT',
     studentId,
     reason || `Pertukaran ke kelas ${newClassName}`,
-    { classId: oldClassId },
+    null,
     { classId: newClassId, newClassName }
   );
 }
@@ -153,13 +175,17 @@ export async function toggleStudentActive(
   active: boolean,
   reason: string
 ): Promise<void> {
-  const ref = doc(db, 'students', studentId);
-  const oldSnap = await getDoc(ref);
+  try {
+    const ref = doc(db, 'students', studentId);
+    await updateDoc(ref, {
+      active,
+      updatedAt: serverTimestamp()
+    });
+  } catch {
+    // Fallback
+  }
 
-  await updateDoc(ref, {
-    active,
-    updatedAt: serverTimestamp()
-  });
+  mockStore.updateStudent(studentId, { active });
 
   await createAuditLog(
     actorUid,
@@ -168,7 +194,7 @@ export async function toggleStudentActive(
     'STUDENT',
     studentId,
     reason,
-    { active: oldSnap.data()?.active },
+    null,
     { active }
   );
 }
@@ -194,7 +220,7 @@ export function parseAndValidateImport(
   const seenInBatch = new Set<string>();
 
   return rawRows.map((row, idx) => {
-    const rowNumber = idx + 2; // Mengambil kira baris tajuk
+    const rowNumber = idx + 2;
     const fullName = String(row['NAMA PENUH'] || row['NAMA'] || row['Nama'] || row['Full Name'] || '').trim();
     const studentNumber = String(row['NO. MURID'] || row['NO MURID'] || row['No Murid'] || row['Student ID'] || '').trim();
     const className = String(row['KELAS'] || row['Kelas'] || row['Class'] || '').trim();

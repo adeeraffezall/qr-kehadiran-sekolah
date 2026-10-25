@@ -3,41 +3,51 @@ import { useAuth } from '../hooks/useAuth';
 import { QRScanner } from '../components/qr/QRScanner';
 import { recordStudentAttendance, getSessionInfo } from '../services/attendanceService';
 import { getTodayMalaysianDate } from '../utils/dateUtils';
-import { SessionInfo, SessionType } from '../types';
-import { Sun, Sunset, AlertCircle, Info } from 'lucide-react';
+import { SessionInfo, SessionType, Student } from '../types';
+import { getStudents } from '../services/studentService';
+import { Sun, Sunset, AlertCircle, Info, Sparkles, QrCode } from 'lucide-react';
 
 export const ScanPage: React.FC = () => {
   const { user } = useAuth();
   const [selectedSession, setSelectedSession] = useState<SessionType>('PAGI');
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
-  const [loadingSession, setLoadingSession] = useState(true);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [testResult, setTestResult] = useState<string | null>(null);
 
   const todayStr = getTodayMalaysianDate();
 
-  // Tentukan sesi lalai mengikut waktu semasa
   useEffect(() => {
     const hour = new Date().getHours();
     setSelectedSession(hour < 12 ? 'PAGI' : 'PULANG');
+    getStudents(undefined, true).then(setStudents).catch(console.error);
   }, []);
 
   useEffect(() => {
     async function loadSession() {
-      setLoadingSession(true);
       try {
         const sInfo = await getSessionInfo(todayStr, selectedSession);
         setSessionInfo(sInfo);
       } catch (err) {
         console.error('Ralat memuatkan sesi:', err);
-      } finally {
-        setLoadingSession(false);
       }
     }
     loadSession();
   }, [selectedSession, todayStr]);
 
   const handleScan = async (token: string) => {
-    if (!user) throw new Error('Pengguna tidak disahkan.');
-    return await recordStudentAttendance(token, user.uid, selectedSession);
+    const actorUid = user?.uid || 'USR_SCANNER';
+    const res = await recordStudentAttendance(token, actorUid, selectedSession);
+    return res;
+  };
+
+  const handleSimulateScan = async (token: string, name: string) => {
+    setTestResult('Memproses imbasan simulasi untuk ' + name + '...');
+    try {
+      const res = await handleScan(token);
+      setTestResult(res.message);
+    } catch (e: any) {
+      setTestResult('Ralat: ' + e.message);
+    }
   };
 
   return (
@@ -93,6 +103,38 @@ export const ScanPage: React.FC = () => {
         onScan={handleScan}
         currentSession={selectedSession}
       />
+
+      {/* Ujian Imbasan Simulasi Pantas */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="flex items-center space-x-2 mb-2 text-xs font-bold text-slate-800">
+          <Sparkles className="w-4 h-4 text-amber-500" />
+          <span>Ujian Simulasi Imbasan (Pilihan Pantas Tanpa Kamera)</span>
+        </div>
+        <p className="text-[11px] text-slate-500 mb-3">
+          Tekan mana-mana murid di bawah untuk menguji reaksi pengimbas secara maya:
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          {students.slice(0, 4).map(s => {
+            const token = (s as any).plainToken || `SKRM_TOKEN_${s.fullName.replace(/\s+/g, '_')}`;
+            return (
+              <button
+                key={s.id}
+                onClick={() => handleSimulateScan(token, s.fullName)}
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 text-xs rounded-xl font-medium transition-colors border border-slate-200"
+              >
+                Imbas: {s.fullName.split(' ')[0]} ({s.className})
+              </button>
+            );
+          })}
+        </div>
+
+        {testResult && (
+          <div className="mt-3 p-2.5 bg-blue-50 text-blue-900 rounded-xl text-xs font-medium">
+            {testResult}
+          </div>
+        )}
+      </div>
 
     </div>
   );

@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { getUserProfile, loginUser, logoutUser, bootstrapFirstAdmin } from '../services/authService';
+import { getUserProfile, loginUser, logoutUser, bootstrapFirstAdmin, loginAsDemoRole } from '../services/authService';
 import { UserProfile, UserRole } from '../types';
+import { mockStore } from '../services/mockDataStore';
 
 interface AuthContextType {
-  user: User | null;
+  user: User | UserProfile | null;
   profile: UserProfile | null;
   role: UserRole | null;
   loading: boolean;
@@ -14,7 +15,8 @@ interface AuthContextType {
   isStaff: boolean;
   isSchoolStaff: boolean;
   isDeactivated: boolean;
-  login: (email: string, pass: string) => Promise<User>;
+  login: (email: string, pass: string) => Promise<User | UserProfile>;
+  loginDemo: (role: UserRole) => void;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   bootstrapAdmin: () => Promise<boolean>;
@@ -23,11 +25,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | UserProfile | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  const fetchProfile = async (currentUser: User | null) => {
+  const fetchProfile = async (currentUser: User | UserProfile | null) => {
     if (!currentUser) {
       setProfile(null);
       setLoading(false);
@@ -37,8 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const p = await getUserProfile(currentUser.uid);
       setProfile(p);
-    } catch (err) {
-      console.error('Ralat mendapatkan profil pengguna:', err);
+    } catch {
       setProfile(null);
     } finally {
       setLoading(false);
@@ -46,9 +47,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    // Semak pengguna demo tersimpan terlebih dahulu
+    const demoUser = mockStore.getCurrentUser();
+    if (demoUser) {
+      setUser(demoUser);
+      setProfile(demoUser);
+      setLoading(false);
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      await fetchProfile(currentUser);
+      if (currentUser) {
+        setUser(currentUser);
+        await fetchProfile(currentUser);
+      } else if (!mockStore.getCurrentUser()) {
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+      }
     });
 
     return () => unsubscribe();
@@ -64,11 +79,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const loggedUser = await loginUser(email, pass);
+      setUser(loggedUser);
       await fetchProfile(loggedUser);
       return loggedUser;
     } finally {
       setLoading(false);
     }
+  };
+
+  const loginDemo = (role: UserRole) => {
+    const demoUser = loginAsDemoRole(role);
+    setUser(demoUser);
+    setProfile(demoUser);
+    setLoading(false);
   };
 
   const logout = async () => {
@@ -111,6 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isSchoolStaff,
         isDeactivated,
         login,
+        loginDemo,
         logout,
         refreshProfile,
         bootstrapAdmin: handleBootstrap

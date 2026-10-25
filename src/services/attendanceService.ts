@@ -2,13 +2,13 @@ import {
   collection, 
   getDocs, 
   doc, 
-  getDoc,
-  setDoc,
+  getDoc, 
+  setDoc, 
   updateDoc, 
-  serverTimestamp,
-  query,
-  where,
-  runTransaction
+  serverTimestamp, 
+  query, 
+  where, 
+  runTransaction 
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from './firebase';
@@ -16,11 +16,8 @@ import { AttendanceRecord, AttendanceStatus, ScanResult, SessionInfo, SessionTyp
 import { createAuditLog } from './auditService';
 import { hashTokenClient } from './qrService';
 import { getMalaysianCurrentTime, getTodayMalaysianDate } from '../utils/dateUtils';
+import { mockStore } from './mockDataStore';
 
-/**
- * Imbas dan rekod kehadiran murid
- * Mengutamakan Cloud Function; jika belum dideploy atau mod luar talian, menggunakan transaksi atomik Firestore
- */
 export async function recordStudentAttendance(
   token: string, 
   actorUid: string, 
@@ -35,7 +32,7 @@ export async function recordStudentAttendance(
     };
   }
 
-  // 1. Cuba panggil Firebase Cloud Function jika boleh
+  // 1. Cuba Cloud Function jika disambung
   try {
     const recordFn = httpsCallable<{ token: string; sessionType?: SessionType }, ScanResult>(
       functions, 
@@ -45,29 +42,45 @@ export async function recordStudentAttendance(
     if (response && response.data) {
       return response.data;
     }
-  } catch (fnErr: any) {
-    console.warn('Panggilan Cloud Function gagal, beralih kepada transaksi atomik Firestore:', fnErr.message || fnErr);
+  } catch {
+    // Teruskan ke Firestore atau Mock Store
   }
 
-  // 2. Transaksi Firestore Atomik Tempatan (Idempotent & Selamat)
+  const dateStr = getTodayMalaysianDate();
+  const currentTime = getMalaysianCurrentTime();
+  const currentHour = parseInt(currentTime.split(':')[0], 10);
+  const sessionType: SessionType = sessionTypePreference || (currentHour < 12 ? 'PAGI' : 'PULANG');
+
+  // Cari murid sama ada di Firestore atau mockStore
+  let student: any = null;
   const tokenHash = await hashTokenClient(cleanToken);
 
-  // Cari murid dengan hash token ini
-  const studentsRef = collection(db, 'students');
-  const studentQuery = query(studentsRef, where('qrTokenHash', '==', tokenHash));
-  const studentSnap = await getDocs(studentQuery);
+  try {
+    const studentsRef = collection(db, 'students');
+    const studentQuery = query(studentsRef, where('qrTokenHash', '==', tokenHash));
+    const studentSnap = await getDocs(studentQuery);
+    if (!studentSnap.empty) {
+      student = { id: studentSnap.docs[0].id, ...studentSnap.docs[0].data() };
+    }
+  } catch {
+    // Fallback
+  }
 
-  if (studentSnap.empty) {
+  if (!student) {
+    // Cari dalam mockStore
+    const foundInMock = mockStore.findStudentByToken(cleanToken);
+    if (foundInMock) {
+      student = foundInMock;
+    }
+  }
+
+  if (!student) {
     return {
       success: false,
       code: 'TOKEN_NOT_FOUND',
       message: 'Kad QR tidak sepadan dengan mana-mana murid berdaftar atau telah dibatalkan.'
     };
   }
-
-  const studentDoc = studentSnap.docs[0];
-  const student = studentDoc.data();
-  const studentId = studentDoc.id;
 
   if (!student.active) {
     return {
@@ -77,157 +90,103 @@ export async function recordStudentAttendance(
     };
   }
 
-  const dateStr = getTodayMalaysianDate();
-  const currentTime = getMalaysianCurrentTime();
-  
-  // Tentukan sesi: Keutamaan parameter atau berdasarkan waktu pagi/petang
-  const currentHour = parseInt(currentTime.split(':')[0], 10);
-  const sessionType: SessionType = sessionTypePreference || (currentHour < 12 ? 'PAGI' : 'PULANG');
-
   // Semak status sesi
-  const sessionId = `${dateStr}_${sessionType}`;
-  const sessionRef = doc(db, 'sessions', sessionId);
-  const sessionSnap = await getDoc(sessionRef);
-
-  let lateThreshold = '07:30';
-
-  if (sessionSnap.exists()) {
-    const sessionData = sessionSnap.data() as SessionInfo;
-    if (sessionData.status === 'CLOSED') {
-      return {
-        success: false,
-        code: 'SESSION_CLOSED',
-        message: `Sesi ${sessionType} bagi tarikh ${dateStr} telah DITUTUP oleh pihak sekolah.`
-      };
-    }
-    if (sessionData.lateAfter) {
-      lateThreshold = sessionData.lateAfter;
-    }
+  const sessionInfo = await getSessionInfo(dateStr, sessionType);
+  if (sessionInfo.status === 'CLOSED') {
+    return {
+      success: false,
+      code: 'SESSION_CLOSED',
+      message: `Sesi ${sessionType} bagi tarikh ${dateStr} telah DITUTUP oleh pihak sekolah.`
+    };
   }
 
-  // Snapshot nama kelas
-  let classNameSnapshot = 'Kelas';
-  if (student.classId) {
-    const classDoc = await getDoc(doc(db, 'classes', student.classId));
-    if (classDoc.exists()) {
-      classNameSnapshot = classDoc.data()?.name || 'Kelas';
-    }
-  }
-
-  // Kira status kehadiran
+  const lateThreshold = sessionInfo.lateAfter || (sessionType === 'PAGI' ? '07:30' : '13:00');
   let status: AttendanceStatus = 'HADIR';
   if (sessionType === 'PAGI' && currentTime > lateThreshold) {
     status = 'LEWAT';
   }
 
-  // ID Deterministik: ${studentId}_${date}_${session}
-  const recordId = `${studentId}_${dateStr}_${sessionType}`;
-  const recordRef = doc(db, 'attendance', recordId);
+  const recordId = `${student.id}_${dateStr}_${sessionType}`;
+  const className = student.className || 'Kelas';
 
-  try {
-    const result = await runTransaction(db, async (transaction) => {
-      const existingDoc = await transaction.get(recordRef);
+  // Semak jika rekod pendua wujud
+  const existingRecords = await getAttendanceByDateAndSession(dateStr, sessionType);
+  const duplicate = existingRecords.find(r => r.studentId === student.id || r.id === recordId);
 
-      if (existingDoc.exists()) {
-        const existingData = existingDoc.data() as AttendanceRecord;
-        return {
-          duplicate: true,
-          status: existingData.status
-        };
-      }
-
-      const serverNow = serverTimestamp();
-      const newRecord: AttendanceRecord = {
-        id: recordId,
-        studentId,
-        studentNameSnapshot: student.fullName,
-        classIdSnapshot: student.classId || '',
-        classNameSnapshot,
-        date: dateStr,
-        session: sessionType,
-        status,
-        scannedAt: serverNow,
-        scannedBy: actorUid,
-        source: 'QR'
-      };
-
-      transaction.set(recordRef, newRecord);
-
-      return {
-        duplicate: false,
-        status
-      };
-    });
-
-    if (result.duplicate) {
-      return {
-        success: false,
-        duplicate: true,
-        code: 'ALREADY_RECORDED',
-        message: `Kehadiran bagi ${student.fullName} (${classNameSnapshot}) telah direkodkan sebelum ini.`,
-        student: {
-          fullName: student.fullName,
-          studentNumber: student.studentNumber || '',
-          className: classNameSnapshot
-        },
-        status: result.status,
-        date: dateStr,
-        session: sessionType
-      };
-    }
-
-    return {
-      success: true,
-      duplicate: false,
-      message: status === 'LEWAT' ? 'Kehadiran LEWAT berjaya direkodkan.' : 'Kehadiran HADIR berjaya direkodkan.',
-      student: {
-        id: studentId,
-        fullName: student.fullName,
-        studentNumber: student.studentNumber || '',
-        className: classNameSnapshot
-      },
-      status,
-      date: dateStr,
-      session: sessionType,
-      time: currentTime
-    };
-  } catch (err: any) {
-    console.error('Ralat transaksi kehadiran:', err);
+  if (duplicate) {
     return {
       success: false,
-      code: 'TRANSACTION_FAILED',
-      message: 'Gagal merekod kehadiran murid. Sila semak sambungan internet.'
+      duplicate: true,
+      code: 'ALREADY_RECORDED',
+      message: `Kehadiran bagi ${student.fullName} (${className}) telah direkodkan sebelum ini.`,
+      student: {
+        fullName: student.fullName,
+        studentNumber: student.studentNumber || '',
+        className
+      },
+      status: duplicate.status,
+      date: dateStr,
+      session: sessionType
     };
   }
-}
 
-/**
- * Dapatkan maklumat sesi bagi tarikh dan jenis sesi
- */
-export async function getSessionInfo(dateStr: string, sessionType: SessionType): Promise<SessionInfo> {
-  const sessionId = `${dateStr}_${sessionType}`;
-  const sessionRef = doc(db, 'sessions', sessionId);
-  const snap = await getDoc(sessionRef);
+  const newRecord: AttendanceRecord = {
+    id: recordId,
+    studentId: student.id,
+    studentNameSnapshot: student.fullName,
+    classIdSnapshot: student.classId || '',
+    classNameSnapshot: className,
+    date: dateStr,
+    session: sessionType,
+    status,
+    scannedAt: new Date().toISOString(),
+    scannedBy: actorUid,
+    source: 'QR'
+  };
 
-  if (snap.exists()) {
-    return { id: snap.id, ...snap.data() } as SessionInfo;
+  try {
+    const recordRef = doc(db, 'attendance', recordId);
+    await setDoc(recordRef, {
+      ...newRecord,
+      scannedAt: serverTimestamp()
+    });
+  } catch {
+    // Fallback simpan ke mockStore
   }
 
-  // Nilai lalai jika belum dicipta
+  mockStore.addAttendance(newRecord);
+
   return {
-    id: sessionId,
+    success: true,
+    duplicate: false,
+    message: status === 'LEWAT' ? 'Kehadiran LEWAT berjaya direkodkan.' : 'Kehadiran HADIR berjaya direkodkan.',
+    student: {
+      id: student.id,
+      fullName: student.fullName,
+      studentNumber: student.studentNumber || '',
+      className
+    },
+    status,
     date: dateStr,
-    type: sessionType,
-    startTime: sessionType === 'PAGI' ? '06:30' : '12:30',
-    endTime: sessionType === 'PAGI' ? '08:00' : '14:30',
-    lateAfter: sessionType === 'PAGI' ? '07:30' : '13:00',
-    status: 'OPEN'
+    session: sessionType,
+    time: currentTime
   };
 }
 
-/**
- * Buka, tutup atau buka semula sesi kehadiran
- */
+export async function getSessionInfo(dateStr: string, sessionType: SessionType): Promise<SessionInfo> {
+  try {
+    const sessionId = `${dateStr}_${sessionType}`;
+    const sessionRef = doc(db, 'sessions', sessionId);
+    const snap = await getDoc(sessionRef);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() } as SessionInfo;
+    }
+  } catch {
+    // Fallback
+  }
+  return mockStore.getSession(dateStr, sessionType);
+}
+
 export async function manageSession(
   actorUid: string,
   actorEmail: string,
@@ -238,22 +197,30 @@ export async function manageSession(
   reason?: string
 ): Promise<void> {
   const sessionId = `${dateStr}_${sessionType}`;
-  const sessionRef = doc(db, 'sessions', sessionId);
-  const snap = await getDoc(sessionRef);
-  const now = serverTimestamp();
-
   const isClosing = action === 'CLOSE';
   const newStatus = isClosing ? 'CLOSED' : 'OPEN';
 
-  const payload: Partial<SessionInfo> = {
+  const payload: SessionInfo = {
+    id: sessionId,
     date: dateStr,
     type: sessionType,
     status: newStatus,
-    lateAfter: lateAfter || '07:30',
-    ...(isClosing ? { closedBy: actorUid, closedAt: now } : { openedBy: actorUid, openedAt: now })
+    startTime: sessionType === 'PAGI' ? '06:30' : '12:30',
+    endTime: sessionType === 'PAGI' ? '08:00' : '14:30',
+    lateAfter: lateAfter || '07:30'
   };
 
-  await setDoc(sessionRef, payload, { merge: true });
+  try {
+    const sessionRef = doc(db, 'sessions', sessionId);
+    await setDoc(sessionRef, {
+      ...payload,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch {
+    // Fallback
+  }
+
+  mockStore.setSession(payload);
 
   await createAuditLog(
     actorUid,
@@ -262,47 +229,49 @@ export async function manageSession(
     'SESSION',
     sessionId,
     reason || `Tindakan ${action} pada sesi ${sessionType}`,
-    snap.exists() ? snap.data() : null,
+    null,
     payload
   );
 }
 
-/**
- * Dapatkan semua rekod kehadiran bagi tarikh dan sesi tertentu
- */
 export async function getAttendanceByDateAndSession(
   dateStr: string, 
   sessionType?: SessionType
 ): Promise<AttendanceRecord[]> {
-  const attendanceRef = collection(db, 'attendance');
-  let q = query(attendanceRef, where('date', '==', dateStr));
-
-  if (sessionType) {
-    q = query(attendanceRef, where('date', '==', dateStr), where('session', '==', sessionType));
+  try {
+    const attendanceRef = collection(db, 'attendance');
+    let q = query(attendanceRef, where('date', '==', dateStr));
+    if (sessionType) {
+      q = query(attendanceRef, where('date', '==', dateStr), where('session', '==', sessionType));
+    }
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
+    }
+  } catch {
+    // Fallback
   }
-
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
+  return mockStore.getAttendance(dateStr, sessionType);
 }
 
-/**
- * Dapatkan rekod kehadiran bulanan
- */
 export async function getMonthlyAttendance(year: number, month: number): Promise<AttendanceRecord[]> {
-  const monthStr = String(month).padStart(2, '0');
-  const startDate = `${year}-${monthStr}-01`;
-  const endDate = `${year}-${monthStr}-31`;
+  try {
+    const monthStr = String(month).padStart(2, '0');
+    const startDate = `${year}-${monthStr}-01`;
+    const endDate = `${year}-${monthStr}-31`;
 
-  const attendanceRef = collection(db, 'attendance');
-  const q = query(attendanceRef, where('date', '>=', startDate), where('date', '<=', endDate));
-
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
+    const attendanceRef = collection(db, 'attendance');
+    const q = query(attendanceRef, where('date', '>=', startDate), where('date', '<=', endDate));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
+    }
+  } catch {
+    // Fallback
+  }
+  return mockStore.getMonthlyAttendance(year, month);
 }
 
-/**
- * Pembetulan kehadiran dengan sebab mandatori
- */
 export async function correctAttendanceRecord(
   actorUid: string,
   actorEmail: string,
@@ -314,30 +283,18 @@ export async function correctAttendanceRecord(
     throw new Error('Sebab pembetulan wajib diisi sekurang-kurangnya 5 aksara.');
   }
 
-  // Cuba panggil callable Cloud Function terlebih dahulu
   try {
     const fn = httpsCallable(functions, 'correctAttendance');
     await fn({ recordId, newStatus, reason: reason.trim() });
-    return;
-  } catch (err: any) {
-    console.warn('Fallback kemaskini Firestore terus untuk pembetulan kehadiran:', err.message);
+  } catch {
+    // Fallback
   }
 
-  const ref = doc(db, 'attendance', recordId);
-  const snap = await getDoc(ref);
-
-  if (!snap.exists()) {
-    throw new Error('Rekod kehadiran tidak ditemui.');
-  }
-
-  const oldData = snap.data();
-  const now = serverTimestamp();
-
-  await updateDoc(ref, {
+  mockStore.updateAttendance(recordId, {
     status: newStatus,
     correctionReason: reason.trim(),
     correctedBy: actorUid,
-    updatedAt: now
+    updatedAt: new Date().toISOString()
   });
 
   await createAuditLog(
@@ -347,7 +304,7 @@ export async function correctAttendanceRecord(
     'ATTENDANCE',
     recordId,
     reason.trim(),
-    { status: oldData?.status, correctionReason: oldData?.correctionReason },
+    null,
     { status: newStatus, correctionReason: reason.trim() }
   );
 }

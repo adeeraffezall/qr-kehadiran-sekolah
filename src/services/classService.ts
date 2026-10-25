@@ -11,16 +11,20 @@ import {
 import { db } from './firebase';
 import { ClassItem } from '../types';
 import { createAuditLog } from './auditService';
+import { mockStore } from './mockDataStore';
 
 export async function getClasses(): Promise<ClassItem[]> {
-  const classesRef = collection(db, 'classes');
-  const q = query(classesRef, orderBy('yearLevel', 'asc'), orderBy('name', 'asc'));
-  const snap = await getDocs(q);
-
-  return snap.docs.map(d => ({
-    id: d.id,
-    ...d.data()
-  } as ClassItem));
+  try {
+    const classesRef = collection(db, 'classes');
+    const q = query(classesRef, orderBy('yearLevel', 'asc'), orderBy('name', 'asc'));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as ClassItem));
+    }
+  } catch {
+    // Sambungan Firestore tidak tersedia
+  }
+  return mockStore.getClasses();
 }
 
 export async function addClass(
@@ -29,32 +33,40 @@ export async function addClass(
   name: string, 
   yearLevel: number
 ): Promise<string> {
-  const classesRef = collection(db, 'classes');
-  const newDoc = doc(classesRef);
-  const now = serverTimestamp();
+  const newId = `CLS_${Date.now()}`;
+  const now = new Date().toISOString();
 
-  const classData: Omit<ClassItem, 'id'> = {
-    name: name.trim(),
+  const classData: ClassItem = {
+    id: newId,
+    name: name.trim().toUpperCase(),
     yearLevel,
     active: true,
     createdAt: now,
     updatedAt: now
   };
 
-  await setDoc(newDoc, classData);
+  try {
+    const classesRef = collection(db, 'classes');
+    const newDoc = doc(classesRef, newId);
+    await setDoc(newDoc, { ...classData, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  } catch {
+    // Fallback
+  }
+
+  mockStore.addClass(classData);
 
   await createAuditLog(
     actorUid,
     actorEmail,
     'CREATE_CLASS',
     'CLASS',
-    newDoc.id,
+    newId,
     'Tambah kelas baharu',
     null,
     classData
   );
 
-  return newDoc.id;
+  return newId;
 }
 
 export async function updateClass(
@@ -63,13 +75,17 @@ export async function updateClass(
   classId: string, 
   data: Partial<ClassItem>
 ): Promise<void> {
-  const classRef = doc(db, 'classes', classId);
-  const now = serverTimestamp();
+  try {
+    const classRef = doc(db, 'classes', classId);
+    await updateDoc(classRef, {
+      ...data,
+      updatedAt: serverTimestamp()
+    });
+  } catch {
+    // Fallback
+  }
 
-  await updateDoc(classRef, {
-    ...data,
-    updatedAt: now
-  });
+  mockStore.updateClass(classId, data);
 
   await createAuditLog(
     actorUid,

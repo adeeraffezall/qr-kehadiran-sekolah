@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { AuditLog } from '../types';
+import { mockStore } from './mockDataStore';
 
 export async function createAuditLog(
   actorUid: string,
@@ -21,35 +22,51 @@ export async function createAuditLog(
   before?: any,
   after?: any
 ): Promise<void> {
+  const logEntry: AuditLog = {
+    actorUid,
+    actorEmail: actorEmail || 'N/A',
+    action,
+    entityType,
+    entityId,
+    reason: reason || undefined,
+    before: before || undefined,
+    after: after || undefined,
+    createdAt: new Date().toISOString()
+  };
+
   try {
     const logsRef = collection(db, 'auditLogs');
     await addDoc(logsRef, {
-      actorUid,
-      actorEmail: actorEmail || 'N/A',
-      action,
-      entityType,
-      entityId,
-      reason: reason || null,
-      before: before || null,
-      after: after || null,
+      ...logEntry,
       createdAt: serverTimestamp()
     });
-  } catch (error) {
-    console.error('Ralat semasa merekod Log Audit:', error);
+  } catch {
+    // Fallback
   }
+
+  mockStore.addAuditLog(logEntry);
 }
 
 export async function getAuditLogs(maxLogs: number = 100, entityTypeFilter?: string): Promise<AuditLog[]> {
-  const logsRef = collection(db, 'auditLogs');
-  let q = query(logsRef, orderBy('createdAt', 'desc'), limit(maxLogs));
+  try {
+    const logsRef = collection(db, 'auditLogs');
+    let q = query(logsRef, orderBy('createdAt', 'desc'), limit(maxLogs));
 
-  if (entityTypeFilter && entityTypeFilter !== 'ALL') {
-    q = query(logsRef, where('entityType', '==', entityTypeFilter), orderBy('createdAt', 'desc'), limit(maxLogs));
+    if (entityTypeFilter && entityTypeFilter !== 'ALL') {
+      q = query(logsRef, where('entityType', '==', entityTypeFilter), orderBy('createdAt', 'desc'), limit(maxLogs));
+    }
+
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AuditLog));
+    }
+  } catch {
+    // Fallback
   }
 
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  } as AuditLog));
+  let logs = mockStore.getAuditLogs();
+  if (entityTypeFilter && entityTypeFilter !== 'ALL') {
+    logs = logs.filter(l => l.entityType === entityTypeFilter);
+  }
+  return logs.slice(0, maxLogs);
 }

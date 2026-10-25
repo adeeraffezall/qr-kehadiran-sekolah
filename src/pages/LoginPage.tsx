@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { resetPassword } from '../services/authService';
-import { QrCode, Lock, Mail, AlertCircle, CheckCircle2, Loader2, School } from 'lucide-react';
+import { mockStore } from '../services/mockDataStore';
+import { QrCode, Lock, Mail, AlertCircle, Loader2, Sparkles, Shield, UserCheck, RefreshCw } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -16,7 +17,7 @@ export const LoginPage: React.FC = () => {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
 
-  const { login } = useAuth();
+  const { login, loginDemo } = useAuth();
   const navigate = useNavigate();
 
   const schoolName = import.meta.env.VITE_SCHOOL_NAME || 'SK SERI MAKMUR';
@@ -37,10 +38,22 @@ export const LoginPage: React.FC = () => {
       } else if (err.code === 'auth/too-many-requests') {
         setError('Terlalu banyak percubaan log masuk gagal. Sila cuba sebentar lagi.');
       } else {
-        setError(err.message || 'Ralat log masuk.');
+        setError(err.message || 'Ralat log masuk. Sila guna butang Akses Pantas di bawah.');
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleQuickDemo = (role: 'ADMIN' | 'TEACHER' | 'STAFF') => {
+    loginDemo(role);
+    navigate('/');
+  };
+
+  const handleResetData = () => {
+    if (window.confirm('Set semula semua data murid, kelas dan rekod kehadiran kepada tetapan asal sekolah?')) {
+      mockStore.resetToSeed();
+      window.location.reload();
     }
   };
 
@@ -61,12 +74,12 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4 py-8">
       <div className="max-w-md w-full">
         
         {/* School Branding Header */}
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center text-white mx-auto shadow-lg shadow-blue-500/20 mb-4">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center text-white mx-auto shadow-lg shadow-blue-500/20 mb-3">
             <QrCode className="w-9 h-9" />
           </div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">
@@ -79,10 +92,10 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {/* Login Card */}
-        <div className="bg-white rounded-3xl shadow-xl border border-slate-200/80 p-8">
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-200/80 p-6 sm:p-8">
           <h2 className="text-lg font-bold text-slate-900 mb-1">Log Masuk Guru & Staf</h2>
           <p className="text-xs text-slate-500 mb-6">
-            Sila masukkan akaun rasmi sekolah yang telah didaftarkan.
+            Masukkan akaun rasmi sekolah atau pilih akaun perintis di bawah.
           </p>
 
           {error && (
@@ -104,7 +117,7 @@ export const LoginPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="guru@moe.edu.my"
+                  placeholder="admin@sekolah.edu.my"
                   className="w-full text-sm pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
@@ -155,8 +168,64 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Info footer */}
-          <div className="mt-6 pt-4 border-t border-slate-100 text-center text-[11px] text-slate-400">
+          {/* Quick Demo Access Buttons */}
+          <div className="mt-6 pt-5 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>Akses Pantas (Ujian & Demonstrasi)</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleResetData}
+                className="text-[11px] text-slate-400 hover:text-slate-600 flex items-center space-x-1"
+                title="Set Semula Data Contoh"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Reset</span>
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => handleQuickDemo('ADMIN')}
+                className="w-full py-2.5 px-3 bg-red-50 hover:bg-red-100/80 border border-red-200 text-red-900 rounded-xl text-xs font-bold flex items-center justify-between transition-colors"
+              >
+                <div className="flex items-center space-x-2">
+                  <Shield className="w-4 h-4 text-red-600" />
+                  <span>Masuk Sebagai Pentadbir (Guru Besar)</span>
+                </div>
+                <span className="text-[10px] bg-red-200/80 text-red-800 px-2 py-0.5 rounded-md">ADMIN</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemo('TEACHER')}
+                className="w-full py-2.5 px-3 bg-blue-50 hover:bg-blue-100/80 border border-blue-200 text-blue-900 rounded-xl text-xs font-bold flex items-center justify-between transition-colors"
+              >
+                <div className="flex items-center space-x-2">
+                  <UserCheck className="w-4 h-4 text-blue-600" />
+                  <span>Masuk Sebagai Guru Bertugas</span>
+                </div>
+                <span className="text-[10px] bg-blue-200/80 text-blue-800 px-2 py-0.5 rounded-md">TEACHER</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemo('STAFF')}
+                className="w-full py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-bold flex items-center justify-between transition-colors"
+              >
+                <div className="flex items-center space-x-2">
+                  <QrCode className="w-4 h-4 text-emerald-600" />
+                  <span>Masuk Sebagai Staf Pengimbas</span>
+                </div>
+                <span className="text-[10px] bg-emerald-200/80 text-emerald-800 px-2 py-0.5 rounded-md">STAFF</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 text-center text-[11px] text-slate-400">
             Murid tidak memerlukan akaun &bull; Dioperasikan oleh Guru & Staf
           </div>
         </div>
