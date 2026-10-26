@@ -104,32 +104,113 @@ const KPM_HOLIDAYS_MAP: Record<string, Omit<KPMHolidayInfo, 'date'>> = {
   '2026-12-29': { name: 'Cuti Penggal 3 Persekolahan KPM 2026/2027', category: 'KPM_TERM', categoryLabel: 'Cuti Penggal KPM', badgeColor: 'blue' },
   '2026-12-30': { name: 'Cuti Penggal 3 Persekolahan KPM 2026/2027', category: 'KPM_TERM', categoryLabel: 'Cuti Penggal KPM', badgeColor: 'blue' },
   '2026-12-31': { name: 'Cuti Penggal 3 Persekolahan KPM 2026/2027', category: 'KPM_TERM', categoryLabel: 'Cuti Penggal KPM', badgeColor: 'blue' },
+
+  // =========================================================================
+  // TAHUN 2027 (Kalendar Persekolahan)
+  // =========================================================================
+  '2027-02-06': { name: 'Tahun Baharu Cina (Hari Pertama)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2027-02-07': { name: 'Tahun Baharu Cina (Hari Kedua)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2027-03-10': { name: 'Hari Raya Aidilfitri (Hari Pertama)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2027-03-11': { name: 'Hari Raya Aidilfitri (Hari Kedua)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2027-05-17': { name: 'Hari Raya Haji / Aidiladha', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2027-06-07': { name: 'Hari Keputeraan YDP Agong', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2027-10-28': { name: 'Hari Deepavali', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+
+  // =========================================================================
+  // TAHUN 2028
+  // =========================================================================
+  '2028-01-26': { name: 'Tahun Baharu Cina (Hari Pertama)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2028-01-27': { name: 'Tahun Baharu Cina (Hari Kedua)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2028-02-27': { name: 'Hari Raya Aidilfitri (Hari Pertama)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2028-02-28': { name: 'Hari Raya Aidilfitri (Hari Kedua)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2028-05-05': { name: 'Hari Raya Haji / Aidiladha', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2028-06-05': { name: 'Hari Keputeraan YDP Agong', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2028-10-17': { name: 'Hari Deepavali', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+
+  // =========================================================================
+  // TAHUN 2029
+  // =========================================================================
+  '2029-02-13': { name: 'Tahun Baharu Cina (Hari Pertama)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2029-02-14': { name: 'Tahun Baharu Cina (Hari Kedua)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2029-02-15': { name: 'Hari Raya Aidilfitri (Hari Pertama)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2029-02-16': { name: 'Hari Raya Aidilfitri (Hari Kedua)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2029-11-05': { name: 'Hari Deepavali', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+
+  // =========================================================================
+  // TAHUN 2030
+  // =========================================================================
+  '2030-02-03': { name: 'Tahun Baharu Cina (Hari Pertama)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2030-02-04': { name: 'Tahun Baharu Cina (Hari Kedua)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2030-02-05': { name: 'Hari Raya Aidilfitri (Hari Pertama)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2030-02-06': { name: 'Hari Raya Aidilfitri (Hari Kedua)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2030-10-26': { name: 'Hari Deepavali', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
 };
 
 /**
  * Semak sama ada sesuatu tarikh itu adalah cuti rasmi KPM / Kelepasan Am Sabah
+ * Menyokong takwim automatik dari tahun 2025 sehingga 2030+
  */
 export function getKPMHoliday(dateStr: string): KPMHolidayInfo | null {
+  // 1. Semak entri eksplisit dalam KPM_HOLIDAYS_MAP
   const item = KPM_HOLIDAYS_MAP[dateStr];
-  if (!item) return null;
-  return {
-    date: dateStr,
-    ...item
-  };
+  if (item) {
+    return {
+      date: dateStr,
+      ...item
+    };
+  }
+
+  // 2. Semak cuti kelepasan am tahunan bertarikh tetap (Menyokong 2025 sehingga 2030+)
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const mmdd = `${parts[1]}-${parts[2]}`;
+    if (mmdd === '01-01') {
+      return { date: dateStr, name: 'Tahun Baharu (Hari Kelepasan Am Sabah)', category: 'STATE', categoryLabel: 'Cuti Negeri Sabah', badgeColor: 'purple' };
+    }
+    if (mmdd === '05-01') {
+      return { date: dateStr, name: 'Hari Pekerja (Hari Kelepasan Am)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' };
+    }
+    if (mmdd === '05-30') {
+      return { date: dateStr, name: 'Pesta Kaamatan (Hari Pertama - Cuti Am Sabah)', category: 'STATE', categoryLabel: 'Cuti Negeri Sabah', badgeColor: 'purple' };
+    }
+    if (mmdd === '05-31') {
+      return { date: dateStr, name: 'Pesta Kaamatan (Hari Kedua - Cuti Am Sabah)', category: 'STATE', categoryLabel: 'Cuti Negeri Sabah', badgeColor: 'purple' };
+    }
+    if (mmdd === '08-31') {
+      return { date: dateStr, name: 'Hari Kebangsaan Malaysia (Hari Kelepasan Am)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' };
+    }
+    if (mmdd === '09-16') {
+      return { date: dateStr, name: 'Hari Malaysia (Hari Kelepasan Am)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' };
+    }
+    if (mmdd === '12-24') {
+      return { date: dateStr, name: 'Cuti Sebelum Krismas (Hari Kelepasan Am Sabah)', category: 'STATE', categoryLabel: 'Cuti Negeri Sabah', badgeColor: 'purple' };
+    }
+    if (mmdd === '12-25') {
+      return { date: dateStr, name: 'Hari Krismas (Hari Kelepasan Am)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' };
+    }
+  }
+
+  return null;
 }
 
 /**
  * Dapatkan semua senarai cuti KPM bagi bulan berkenaan
  */
 export function getKPMHolidaysForMonth(year: number, month: number): KPMHolidayInfo[] {
-  const prefix = `${year}-${String(month).padStart(2, '0')}`;
-  return Object.keys(KPM_HOLIDAYS_MAP)
-    .filter(k => k.startsWith(prefix))
-    .sort()
-    .map(k => ({
-      date: k,
-      ...KPM_HOLIDAYS_MAP[k]
-    }));
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const list: KPMHolidayInfo[] = [];
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dStr = String(d).padStart(2, '0');
+    const mStr = String(month).padStart(2, '0');
+    const fullDate = `${year}-${mStr}-${dStr}`;
+    const h = getKPMHoliday(fullDate);
+    if (h) {
+      list.push(h);
+    }
+  }
+
+  return list;
 }
 
 /**

@@ -7,7 +7,7 @@ import { SchoolDay } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
-import { Calendar, Clock, Save, Plus, Loader2, Sparkles, RotateCcw } from 'lucide-react';
+import { Calendar, Clock, Save, Plus, Loader2, Sparkles, RotateCcw, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
   const { user, isAdmin } = useAuth();
@@ -34,6 +34,9 @@ export const SettingsPage: React.FC = () => {
   const [dismissalEnd, setDismissalEnd] = useState('14:30');
   const [settingsSaved, setSettingsSaved] = useState(false);
 
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
   const loadCalendar = async () => {
     setLoading(true);
     try {
@@ -43,6 +46,20 @@ export const SettingsPage: React.FC = () => {
       console.error('Ralat takwim:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    setSyncFeedback(null);
+    try {
+      await loadCalendar();
+      setSyncFeedback(`Takwim rasmi KPM ${getMonthNameBM(selectedMonth)} ${selectedYear} berjaya disegerakkan.`);
+      setTimeout(() => setSyncFeedback(null), 4000);
+    } catch (err: any) {
+      alert('Ralat semasa menyegerak takwim: ' + err.message);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -235,28 +252,48 @@ export const SettingsPage: React.FC = () => {
         title="Takwim Hari Persekolahan & Cuti" 
         subtitle="Tetapkan hari cuti sekolah, cuti am atau penutupan khas"
         action={
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
+              className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold text-slate-800 shadow-xs"
             >
-              {[2025, 2026, 2027].map(y => (
+              {[2025, 2026, 2027, 2028, 2029, 2030].map(y => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
+              className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold text-slate-800 shadow-xs"
             >
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
                 <option key={m} value={m}>{getMonthNameBM(m)}</option>
               ))}
             </select>
+            {isAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                icon={isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" /> : <RefreshCw className="w-3.5 h-3.5 text-blue-600" />}
+                className="text-xs bg-white text-blue-800 border-blue-200 hover:bg-blue-50 shadow-xs"
+                title="Segerak dan Muat Semula Takwim Rasmi KPM bagi bulan/tahun ini"
+              >
+                {isSyncing ? 'Menyegerak...' : 'Segerak Manual (KPM)'}
+              </Button>
+            )}
           </div>
         }
       >
+        {syncFeedback && (
+          <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs rounded-xl flex items-center space-x-2 animate-in fade-in duration-200">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span className="font-semibold">{syncFeedback}</span>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin text-blue-600" />

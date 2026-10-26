@@ -283,6 +283,24 @@ describe('Ujian Takwim Persekolahan, Pengiraan Peratusan & Eksport Excel (Tests 
     const tomorrow = resolveSchoolDay('2026-10-27', null);
     expect(tomorrow.isSchoolDay).toBe(true);
     expect(tomorrow.notes).toBe('Hari Persekolahan Biasa');
+  });
+
+  // 26. Sokongan Takwim Lanjutan Sehingga Tahun 2030
+  it('26. Enjin takwim menyokong pengesanan cuti rasmi sehingga tahun 2030 secara automatik', () => {
+    // 31 Ogos 2030 (Hari Kebangsaan)
+    const merdeka2030 = resolveSchoolDay('2030-08-31', null);
+    expect(merdeka2030.isSchoolDay).toBe(false);
+    expect(merdeka2030.notes).toContain('Hari Kebangsaan');
+
+    // 30 Mei 2030 (Pesta Kaamatan Sabah)
+    const kaamatan2030 = resolveSchoolDay('2030-05-30', null);
+    expect(kaamatan2030.isSchoolDay).toBe(false);
+    expect(kaamatan2030.notes).toContain('Pesta Kaamatan');
+
+    // 26 Oktober 2030 (Deepavali 2030)
+    const deepavali2030 = resolveSchoolDay('2030-10-26', null);
+    expect(deepavali2030.isSchoolDay).toBe(false);
+    expect(deepavali2030.notes).toContain('Deepavali');
 
   });
 });
