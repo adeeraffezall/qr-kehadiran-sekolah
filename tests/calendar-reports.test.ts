@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { countEligibleSchoolDays, countEligibleDaysBetween } from '../src/services/calendarService';
+import { resolveSchoolDay, getKPMHoliday } from '../src/services/kpmCalendarEngine';
 import { sanitizeCellValue } from '../src/utils/exportExcel';
 import { getWeekDays, getDaysInDateRange } from '../src/utils/dateUtils';
 import { SchoolDay } from '../src/types';
@@ -23,7 +24,7 @@ describe('Ujian Takwim Persekolahan, Pengiraan Peratusan & Eksport Excel (Tests 
     const eligibleDays = countEligibleSchoolDays(2026, 10, customMap);
     
     // 22 hari Isnin-Jumaat tolak 1 hari cuti peristiwa = 21 hari persekolahan layak
-    expect(eligibleDays).toBe(21);
+    expect(eligibleDays).toBe(17);
   });
 
   // 13. Unfinalized sessions
@@ -79,19 +80,19 @@ describe('Ujian Takwim Persekolahan, Pengiraan Peratusan & Eksport Excel (Tests 
   // 16. Multi-period Reporting support (Harian, Mingguan, Bulanan, Sela Masa)
   it('16. Mengira hari persekolahan layak bagi sela masa tarikh tersuai', () => {
     // 2026-10-19 (Isnin) hingga 2026-10-25 (Ahad) = 7 hari (5 hari sekolah Isnin-Jumaat, 2 hari hujung minggu)
-    const days = countEligibleDaysBetween('2026-10-19', '2026-10-25');
+    const days = countEligibleDaysBetween('2026-10-05', '2026-10-11');
     expect(days).toBe(5);
 
     // Mengambil kira cuti khas dalam sela masa
     const customMap = new Map<string, SchoolDay>();
-    customMap.set('2026-10-21', {
-      date: '2026-10-21',
+    customMap.set('2026-10-07', {
+      date: '2026-10-07',
       isSchoolDay: false,
       dayType: 'HOLIDAY',
       notes: 'Cuti Deepavali'
     });
 
-    const daysWithHoliday = countEligibleDaysBetween('2026-10-19', '2026-10-25', customMap);
+    const daysWithHoliday = countEligibleDaysBetween('2026-10-05', '2026-10-11', customMap);
     expect(daysWithHoliday).toBe(4);
   });
 
@@ -202,5 +203,61 @@ describe('Ujian Takwim Persekolahan, Pengiraan Peratusan & Eksport Excel (Tests 
     expect(pptData.classPerformanceList.length).toBeGreaterThan(0);
     expect(pptData.overallPercentage).toBe(0.1);
     expect(pptData.coveragePercentage).toBe(1.1);
+  });
+
+  // 22. Auto-Sync KPM Calendar & Holiday Cause
+  it('22. Enjin Auto-Sync KPM menyelesaikan sebab cuti rasmi (Hari Kebangsaan, Hari Malaysia, Pesta Kaamatan) tanpa input manual', () => {
+    // 31 Ogos 2026 (Hari Kebangsaan)
+    const merdeka = resolveSchoolDay('2026-08-31', null);
+    expect(merdeka.isSchoolDay).toBe(false);
+    expect(merdeka.notes).toContain('Hari Kebangsaan');
+    expect(merdeka.badgeColor).toBe('red');
+
+    // 16 September 2026 (Hari Malaysia)
+    const malaysiaDay = resolveSchoolDay('2026-09-16', null);
+    expect(malaysiaDay.isSchoolDay).toBe(false);
+    expect(malaysiaDay.notes).toContain('Hari Malaysia');
+
+    // 30 Mei 2026 (Pesta Kaamatan Sabah)
+    const kaamatan = resolveSchoolDay('2026-05-30', null);
+    expect(kaamatan.isSchoolDay).toBe(false);
+    expect(kaamatan.notes).toContain('Pesta Kaamatan');
+    expect(kaamatan.badgeColor).toBe('purple');
+  });
+
+  // 23. Manual Override Precedence
+  it('23. Pindaan manual pentadbir sentiasa mempunyai keutamaan tertinggi dan tidak ditimpa oleh takwim KPM', () => {
+    // KPM: 2026-08-31 adalah Cuti Hari Kebangsaan.
+    // Jika pentadbir secara manual menetapkan ia sebagai HARI PERSEKOLAHAN:
+    const manualOverride: SchoolDay = {
+      date: '2026-08-31',
+      isSchoolDay: true,
+      dayType: 'REGULAR',
+      notes: 'Program Khas Patriotik Sekolah (Kehadiran Diambil)'
+    };
+
+    const resolved = resolveSchoolDay('2026-08-31', manualOverride);
+    expect(resolved.isSchoolDay).toBe(true);
+    expect(resolved.source).toBe('MANUAL_OVERRIDE');
+    expect(resolved.notes).toBe('Program Khas Patriotik Sekolah (Kehadiran Diambil)');
+
+    // KPM: 2026-10-15 adalah Khamis biasa.
+    // Jika pentadbir tetapkan sebagai Cuti Peristiwa:
+    const sukanOverride: SchoolDay = {
+      date: '2026-10-15',
+      isSchoolDay: false,
+      dayType: 'HOLIDAY',
+      notes: 'Cuti Peristiwa Sukan Sekolah'
+    };
+    const sukanResolved = resolveSchoolDay('2026-10-15', sukanOverride);
+    expect(sukanResolved.isSchoolDay).toBe(false);
+    expect(sukanResolved.notes).toBe('Cuti Peristiwa Sukan Sekolah');
+  });
+
+  // 24. Automatic Calculation for October 2026
+  it('24. Kiraan hari persekolahan layak Oktober 2026 berpandukan takwim KPM menghasilkan tepat 18 hari', () => {
+    // 31 hari Oktober: 9 hari hujung minggu, 4 hari cuti (TYT Sabah & Deepavali) = 18 hari persekolahan layak
+    const eligibleDays = countEligibleSchoolDays(2026, 10, new Map());
+    expect(eligibleDays).toBe(18);
   });
 });

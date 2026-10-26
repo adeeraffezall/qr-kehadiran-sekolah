@@ -2,33 +2,29 @@ import {
   collection, 
   getDocs, 
   doc, 
-  getDoc,
+  getDoc, 
   setDoc, 
-  serverTimestamp,
-  query,
-  where
+  deleteDoc,
+  serverTimestamp, 
+  query, 
+  where 
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { SchoolDay } from '../types';
 import { createAuditLog } from './auditService';
 import { isWeekend } from '../utils/dateUtils';
+import { resolveSchoolDay } from './kpmCalendarEngine';
 
 export async function getSchoolDay(dateStr: string): Promise<SchoolDay> {
   const ref = doc(db, 'schoolDays', dateStr);
   const snap = await getDoc(ref);
 
   if (snap.exists()) {
-    return snap.data() as SchoolDay;
+    return resolveSchoolDay(dateStr, snap.data() as SchoolDay);
   }
 
-  // Jika tiada dalam pangkalan data, gunakan takwim lalai (Isnin-Jumaat adalah hari sekolah)
-  const weekend = isWeekend(dateStr);
-  return {
-    date: dateStr,
-    isSchoolDay: !weekend,
-    dayType: weekend ? 'HOLIDAY' : 'REGULAR',
-    notes: weekend ? 'Hujung Minggu' : 'Hari Persekolahan Biasa'
-  };
+  // Gunakan Enjin Takwim Auto-Sync KPM (Kumpulan B - Sabah) secara pintar
+  return resolveSchoolDay(dateStr, null);
 }
 
 export async function getSchoolDaysForMonth(year: number, month: number): Promise<Map<string, SchoolDay>> {
@@ -89,7 +85,35 @@ export async function setSchoolDay(
 }
 
 /**
+ * Kembalikan tarikh kepada Takwim Asas KPM (Memadam pindaan manual pentadbir)
+ */
+export async function resetSchoolDayToKPMDefault(
+  actorUid: string,
+  actorEmail: string,
+  dateStr: string
+): Promise<void> {
+  try {
+    const ref = doc(db, 'schoolDays', dateStr);
+    await deleteDoc(ref);
+  } catch (err) {
+    console.warn('Gagal memadam pindaan tarikh dari Firestore:', err);
+  }
+
+  await createAuditLog(
+    actorUid,
+    actorEmail,
+    'RESET_SCHOOL_CALENDAR_TO_KPM',
+    'SETTINGS',
+    dateStr,
+    `Pindaan manual bagi tarikh ${dateStr} dipadam. Tarikh kini kembali mengikut Takwim Rasmi KPM.`,
+    null,
+    null
+  );
+}
+
+/**
  * Kira jumlah hari persekolahan yang layak bagi bulan tertentu
+ * Berpandukan takwim Auto-Sync KPM dan mengambil kira sebarang pindaan manual
  */
 export function countEligibleSchoolDays(
   year: number, 
@@ -109,12 +133,8 @@ export function countEligibleSchoolDays(
     }
 
     const custom = customDaysMap.get(dateStr);
-    if (custom) {
-      if (custom.isSchoolDay) count++;
-    } else {
-      // Default: bukan hujung minggu = hari sekolah
-      if (!isWeekend(dateStr)) count++;
-    }
+    const resolved = resolveSchoolDay(dateStr, custom);
+    if (resolved.isSchoolDay) count++;
   }
 
   return count;
@@ -149,11 +169,8 @@ export function countEligibleDaysBetween(
     }
 
     const custom = customDaysMap ? customDaysMap.get(dateStr) : undefined;
-    if (custom) {
-      if (custom.isSchoolDay) count++;
-    } else {
-      if (!isWeekend(dateStr)) count++;
-    }
+    const resolved = resolveSchoolDay(dateStr, custom);
+    if (resolved.isSchoolDay) count++;
 
     cur.setDate(cur.getDate() + 1);
   }

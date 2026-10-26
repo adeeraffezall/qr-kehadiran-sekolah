@@ -60,6 +60,9 @@ export interface SchoolDay {
   isSchoolDay: boolean;
   dayType: 'REGULAR' | 'HOLIDAY' | 'SPECIAL' | 'EXAM';
   notes?: string;
+  source?: 'MANUAL_OVERRIDE' | 'KPM_AUTO' | 'WEEKEND' | 'DEFAULT';
+  badgeColor?: 'red' | 'purple' | 'blue' | 'orange' | 'green' | 'yellow' | 'gray';
+  categoryLabel?: string;
   createdAt?: any;
   updatedAt?: any;
 }

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { getSchoolDaysForMonth, setSchoolDay } from '../services/calendarService';
+import { getSchoolDaysForMonth, setSchoolDay, resetSchoolDayToKPMDefault } from '../services/calendarService';
+import { resolveSchoolDay, getKPMHoliday } from '../services/kpmCalendarEngine';
 import { getMonthNameBM, getTodayMalaysianDate, isWeekend } from '../utils/dateUtils';
 import { SchoolDay } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
-import { Calendar, Clock, Save, Plus, Loader2 } from 'lucide-react';
+import { Calendar, Clock, Save, Plus, Loader2, Sparkles, RotateCcw } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
   const { user, isAdmin } = useAuth();
@@ -52,17 +53,25 @@ export const SettingsPage: React.FC = () => {
   const handleOpenDayModal = (dateStr: string) => {
     setSelectedDateStr(dateStr);
     const existing = calendarMap.get(dateStr);
-    if (existing) {
-      setIsSchoolDay(existing.isSchoolDay);
-      setDayType(existing.dayType);
-      setNotes(existing.notes || '');
-    } else {
-      const weekend = isWeekend(dateStr);
-      setIsSchoolDay(!weekend);
-      setDayType(weekend ? 'HOLIDAY' : 'REGULAR');
-      setNotes(weekend ? 'Hujung Minggu' : 'Hari Persekolahan');
-    }
+    const resolved = resolveSchoolDay(dateStr, existing);
+    setIsSchoolDay(resolved.isSchoolDay);
+    setDayType(resolved.dayType);
+    setNotes(resolved.notes || '');
     setModalOpen(true);
+  };
+
+  const handleResetToKPM = async () => {
+    if (!user) return;
+    setIsSavingDay(true);
+    try {
+      await resetSchoolDayToKPMDefault(user.uid, user.email || '', selectedDateStr);
+      setModalOpen(false);
+      await loadCalendar();
+    } catch (err: any) {
+      alert('Ralat menetapkan semula takwim: ' + err.message);
+    } finally {
+      setIsSavingDay(false);
+    }
   };
 
   const handleSaveDay = async (e: React.FormEvent) => {
@@ -95,14 +104,18 @@ export const SettingsPage: React.FC = () => {
     const mStr = String(selectedMonth).padStart(2, '0');
     const fullDate = `${selectedYear}-${mStr}-${dStr}`;
     const custom = calendarMap.get(fullDate);
-    const weekend = isWeekend(fullDate);
+    const resolved = resolveSchoolDay(fullDate, custom);
 
     dayRows.push({
       dateStr: fullDate,
       dayNumber: d,
-      isSchoolDay: custom ? custom.isSchoolDay : !weekend,
-      dayType: custom ? custom.dayType : (weekend ? 'HOLIDAY' : 'REGULAR'),
-      notes: custom ? custom.notes : (weekend ? 'Hujung Minggu' : 'Hari Biasa')
+      isSchoolDay: resolved.isSchoolDay,
+      dayType: resolved.dayType,
+      notes: resolved.notes || 'Hari Persekolahan Biasa',
+      source: resolved.source,
+      badgeColor: resolved.badgeColor,
+      categoryLabel: resolved.categoryLabel,
+      isManualOverride: !!custom
     });
   }
 
@@ -243,30 +256,64 @@ export const SettingsPage: React.FC = () => {
             <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
-            {dayRows.map(day => (
-              <div
-                key={day.dateStr}
-                onClick={() => isAdmin && handleOpenDayModal(day.dateStr)}
-                className={`p-3 rounded-xl border text-center transition-all ${
-                  isAdmin ? 'cursor-pointer hover:shadow-xs' : ''
-                } ${
-                  day.isSchoolDay
-                    ? 'bg-white border-slate-200 hover:border-blue-400'
-                    : 'bg-rose-50/60 border-rose-200 text-rose-900'
-                }`}
-              >
-                <span className="block font-black text-sm text-slate-800">{day.dayNumber}</span>
-                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold mt-1 ${
-                  day.isSchoolDay ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                }`}>
-                  {day.isSchoolDay ? 'Sekolah' : 'Cuti'}
+          <div>
+            {/* Banner Auto-Sync KPM */}
+            <div className="mb-4 p-3 bg-blue-50/70 border border-blue-200/80 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs text-blue-900">
+              <div className="flex items-center space-x-2">
+                <Sparkles className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                <span>
+                  <strong>Auto-Sync Rasmi KPM (Kumpulan B - Sabah):</strong> Cuti penggal KPM, cuti kelepasan am persekutuan & negeri Sabah diselaraskan secara automatik. Pindaan manual pentadbir sekolah mempunyai keutamaan tertinggi.
                 </span>
-                <p className="text-[10px] text-slate-500 mt-1 truncate" title={day.notes}>
-                  {day.notes}
-                </p>
               </div>
-            ))}
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold">
+                <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200">Cuti Kebangsaan</span>
+                <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">Cuti Sabah</span>
+                <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">Cuti Penggal KPM</span>
+                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">Cuti Tambahan KPM</span>
+                <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 border border-yellow-300">Pindaan Sekolah</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+              {dayRows.map(day => {
+                let badgeBg = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                if (day.badgeColor === 'red') badgeBg = 'bg-rose-100 text-rose-800 border-rose-200';
+                else if (day.badgeColor === 'purple') badgeBg = 'bg-purple-100 text-purple-800 border-purple-200';
+                else if (day.badgeColor === 'blue') badgeBg = 'bg-blue-100 text-blue-800 border-blue-200';
+                else if (day.badgeColor === 'orange') badgeBg = 'bg-amber-100 text-amber-800 border-amber-200';
+                else if (day.badgeColor === 'yellow') badgeBg = 'bg-yellow-100 text-yellow-800 border-yellow-300';
+                else if (day.badgeColor === 'gray') badgeBg = 'bg-slate-100 text-slate-700 border-slate-200';
+
+                return (
+                  <div
+                    key={day.dateStr}
+                    onClick={() => isAdmin && handleOpenDayModal(day.dateStr)}
+                    className={`p-2.5 rounded-xl border text-center transition-all ${
+                      isAdmin ? 'cursor-pointer hover:shadow-xs hover:border-blue-400' : ''
+                    } ${
+                      day.isSchoolDay
+                        ? 'bg-white border-slate-200'
+                        : 'bg-slate-50/90 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-sm text-slate-800">{day.dayNumber}</span>
+                      {day.isManualOverride && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 bg-yellow-200 text-yellow-900 border border-yellow-300 rounded" title="Pindaan Manual Pentadbir Sekolah">
+                          Pindaan
+                        </span>
+                      )}
+                    </div>
+                    <span className={`inline-block px-1.5 py-0.5 rounded-md text-[10px] font-bold mt-1 border ${badgeBg}`}>
+                      {day.isSchoolDay ? 'Sekolah' : 'Cuti'}
+                    </span>
+                    <p className="text-[10px] text-slate-600 font-medium mt-1 truncate" title={day.notes}>
+                      {day.notes}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </Card>
@@ -341,13 +388,29 @@ export const SettingsPage: React.FC = () => {
               />
             </div>
 
-            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
-              <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
-                Batal
-              </Button>
-              <Button type="submit" variant="primary" isLoading={isSavingDay}>
-                Simpan
-              </Button>
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+              {calendarMap.has(selectedDateStr) ? (
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm"
+                  onClick={handleResetToKPM}
+                  icon={<RotateCcw className="w-3.5 h-3.5 text-amber-600" />}
+                  className="text-amber-800 border-amber-300 hover:bg-amber-50 text-xs"
+                  title="Padam pindaan manual dan gunakan Takwim Asas KPM"
+                >
+                  Guna Takwim KPM
+                </Button>
+              ) : <div />}
+
+              <div className="flex items-center space-x-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setModalOpen(false)}>
+                  Batal
+                </Button>
+                <Button type="submit" variant="primary" size="sm" isLoading={isSavingDay}>
+                  Simpan Pindaan
+                </Button>
+              </div>
             </div>
           </form>
         </Modal>
