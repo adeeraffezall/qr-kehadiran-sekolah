@@ -6,7 +6,9 @@ import {
   getAttendanceByDateAndSession, 
   getSessionInfo, 
   manageSession, 
-  correctAttendanceRecord 
+  correctAttendanceRecord,
+  subscribeSessionInfo,
+  subscribeAttendance
 } from '../services/attendanceService';
 import { getTodayMalaysianDate, formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
 import { AttendanceRecord, AttendanceStatus, ClassItem, SessionInfo, SessionType, Student } from '../types';
@@ -44,20 +46,29 @@ export const AttendancePage: React.FC = () => {
   const [sessionManaging, setSessionManaging] = useState<boolean>(false);
 
   useEffect(() => {
+    let unsubSession: () => void = () => {};
+    let unsubAttendance: () => void = () => {};
+
     async function loadData() {
       setLoading(true);
       try {
-        const [cList, sList, aRecords, sInfo] = await Promise.all([
+        const [cList, sList] = await Promise.all([
           getClasses(),
-          getStudents(selectedClassId === 'ALL' ? undefined : selectedClassId, true),
-          getAttendanceByDateAndSession(selectedDate, selectedSession),
-          getSessionInfo(selectedDate, selectedSession)
+          getStudents(selectedClassId === 'ALL' ? undefined : selectedClassId, true)
         ]);
 
         setClasses(cList);
         setStudents(sList);
-        setRecords(aRecords);
-        setSessionInfo(sInfo);
+
+        // Langgan kemas kini status sesi secara langsung (Real-Time Cloud)
+        unsubSession = subscribeSessionInfo(selectedDate, selectedSession, (sInfo) => {
+          setSessionInfo(sInfo);
+        });
+
+        // Langgan rekod kehadiran secara langsung (Real-Time Cloud)
+        unsubAttendance = subscribeAttendance(selectedDate, selectedSession, (aRecords) => {
+          setRecords(aRecords);
+        });
       } catch (err) {
         console.error('Ralat data kehadiran:', err);
       } finally {
@@ -66,6 +77,11 @@ export const AttendancePage: React.FC = () => {
     }
 
     loadData();
+
+    return () => {
+      unsubSession();
+      unsubAttendance();
+    };
   }, [selectedDate, selectedSession, selectedClassId]);
 
   const handleManageSession = async (action: 'OPEN' | 'CLOSE' | 'REOPEN', lateAfter: string, reason?: string) => {

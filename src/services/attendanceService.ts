@@ -8,6 +8,7 @@ import {
   serverTimestamp, 
   query, 
   where, 
+  onSnapshot,
   runTransaction 
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -179,12 +180,68 @@ export async function getSessionInfo(dateStr: string, sessionType: SessionType):
     const sessionRef = doc(db, 'sessions', sessionId);
     const snap = await getDoc(sessionRef);
     if (snap.exists()) {
-      return { id: snap.id, ...snap.data() } as SessionInfo;
+      const data = { id: snap.id, ...snap.data() } as SessionInfo;
+      mockStore.setSession(data);
+      return data;
     }
   } catch {
     // Fallback
   }
   return mockStore.getSession(dateStr, sessionType);
+}
+
+export function subscribeSessionInfo(
+  dateStr: string,
+  sessionType: SessionType,
+  callback: (session: SessionInfo) => void
+): () => void {
+  const sessionId = `${dateStr}_${sessionType}`;
+  try {
+    const sessionRef = doc(db, 'sessions', sessionId);
+    const unsubscribe = onSnapshot(sessionRef, (snap) => {
+      if (snap.exists()) {
+        const data = { id: snap.id, ...snap.data() } as SessionInfo;
+        mockStore.setSession(data);
+        callback(data);
+      } else {
+        callback(mockStore.getSession(dateStr, sessionType));
+      }
+    }, (err) => {
+      console.warn('Subscription session error:', err.message);
+      callback(mockStore.getSession(dateStr, sessionType));
+    });
+    return unsubscribe;
+  } catch (err) {
+    callback(mockStore.getSession(dateStr, sessionType));
+    return () => {};
+  }
+}
+
+export function subscribeAttendance(
+  dateStr: string,
+  sessionType: SessionType,
+  callback: (records: AttendanceRecord[]) => void
+): () => void {
+  try {
+    const attendanceRef = collection(db, 'attendance');
+    const q = query(attendanceRef, where('date', '==', dateStr), where('session', '==', sessionType));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
+        list.forEach(r => mockStore.addAttendance(r));
+        callback(list);
+      } else {
+        callback(mockStore.getAttendance(dateStr, sessionType));
+      }
+    }, (err) => {
+      console.warn('Subscription attendance error:', err.message);
+      callback(mockStore.getAttendance(dateStr, sessionType));
+    });
+    return unsubscribe;
+  } catch (err) {
+    callback(mockStore.getAttendance(dateStr, sessionType));
+    return () => {};
+  }
 }
 
 export async function manageSession(

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { QRScanner } from '../components/qr/QRScanner';
-import { recordStudentAttendance, getSessionInfo } from '../services/attendanceService';
+import { recordStudentAttendance, getSessionInfo, subscribeSessionInfo } from '../services/attendanceService';
 import { getTodayMalaysianDate } from '../utils/dateUtils';
 import { SessionInfo, SessionType, Student } from '../types';
 import { getStudents } from '../services/studentService';
@@ -23,15 +23,10 @@ export const ScanPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    async function loadSession() {
-      try {
-        const sInfo = await getSessionInfo(todayStr, selectedSession);
-        setSessionInfo(sInfo);
-      } catch (err) {
-        console.error('Ralat memuatkan sesi:', err);
-      }
-    }
-    loadSession();
+    const unsub = subscribeSessionInfo(todayStr, selectedSession, (sInfo) => {
+      setSessionInfo(sInfo);
+    });
+    return () => unsub();
   }, [selectedSession, todayStr]);
 
   const handleScan = async (token: string) => {
