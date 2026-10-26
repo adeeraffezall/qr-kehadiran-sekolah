@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { getSchoolDaysForMonth, setSchoolDay, resetSchoolDayToKPMDefault } from '../services/calendarService';
 import { resolveSchoolDay, getKPMHoliday } from '../services/kpmCalendarEngine';
-import { getMonthNameBM, getTodayMalaysianDate, isWeekend } from '../utils/dateUtils';
+import { getMonthNameBM, getTodayMalaysianDate, isWeekend, getDayNameBM } from '../utils/dateUtils';
 import { SchoolDay } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -98,6 +98,10 @@ export const SettingsPage: React.FC = () => {
 
   // Bina senarai hari dalam bulan yang dipilih
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+  const firstDayDate = new Date(selectedYear, selectedMonth - 1, 1);
+  // Isnin = 0, Selasa = 1, ..., Sabtu = 5, Ahad = 6
+  const leadingSpacers = (firstDayDate.getDay() + 6) % 7;
+
   const dayRows = [];
   for (let d = 1; d <= daysInMonth; d++) {
     const dStr = String(d).padStart(2, '0');
@@ -105,10 +109,12 @@ export const SettingsPage: React.FC = () => {
     const fullDate = `${selectedYear}-${mStr}-${dStr}`;
     const custom = calendarMap.get(fullDate);
     const resolved = resolveSchoolDay(fullDate, custom);
+    const dayNameBM = getDayNameBM(fullDate);
 
     dayRows.push({
       dateStr: fullDate,
       dayNumber: d,
+      dayNameBM,
       isSchoolDay: resolved.isSchoolDay,
       dayType: resolved.dayType,
       notes: resolved.notes || 'Hari Persekolahan Biasa',
@@ -274,45 +280,87 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
-              {dayRows.map(day => {
-                let badgeBg = 'bg-emerald-100 text-emerald-800 border-emerald-200';
-                if (day.badgeColor === 'red') badgeBg = 'bg-rose-100 text-rose-800 border-rose-200';
-                else if (day.badgeColor === 'purple') badgeBg = 'bg-purple-100 text-purple-800 border-purple-200';
-                else if (day.badgeColor === 'blue') badgeBg = 'bg-blue-100 text-blue-800 border-blue-200';
-                else if (day.badgeColor === 'orange') badgeBg = 'bg-amber-100 text-amber-800 border-amber-200';
-                else if (day.badgeColor === 'yellow') badgeBg = 'bg-yellow-100 text-yellow-800 border-yellow-300';
-                else if (day.badgeColor === 'gray') badgeBg = 'bg-slate-100 text-slate-700 border-slate-200';
-
-                return (
-                  <div
-                    key={day.dateStr}
-                    onClick={() => isAdmin && handleOpenDayModal(day.dateStr)}
-                    className={`p-2.5 rounded-xl border text-center transition-all ${
-                      isAdmin ? 'cursor-pointer hover:shadow-xs hover:border-blue-400' : ''
-                    } ${
-                      day.isSchoolDay
-                        ? 'bg-white border-slate-200'
-                        : 'bg-slate-50/90 border-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-sm text-slate-800">{day.dayNumber}</span>
-                      {day.isManualOverride && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 bg-yellow-200 text-yellow-900 border border-yellow-300 rounded" title="Pindaan Manual Pentadbir Sekolah">
-                          Pindaan
-                        </span>
-                      )}
-                    </div>
-                    <span className={`inline-block px-1.5 py-0.5 rounded-md text-[10px] font-bold mt-1 border ${badgeBg}`}>
-                      {day.isSchoolDay ? 'Sekolah' : 'Cuti'}
-                    </span>
-                    <p className="text-[10px] text-slate-600 font-medium mt-1 truncate" title={day.notes}>
-                      {day.notes}
-                    </p>
+            <div className="overflow-x-auto pb-2">
+              <div className="min-w-[700px]">
+                {/* Baris Pengepala 7 Hari Seminggu (Isnin - Ahad) */}
+                <div className="grid grid-cols-7 gap-2 mb-2 text-center text-xs font-black">
+                  <div className="p-2 bg-blue-50/80 border border-blue-200/80 rounded-xl text-blue-900 tracking-wider">
+                    ISNIN
                   </div>
-                );
-              })}
+                  <div className="p-2 bg-blue-50/80 border border-blue-200/80 rounded-xl text-blue-900 tracking-wider">
+                    SELASA
+                  </div>
+                  <div className="p-2 bg-blue-50/80 border border-blue-200/80 rounded-xl text-blue-900 tracking-wider">
+                    RABU
+                  </div>
+                  <div className="p-2 bg-blue-50/80 border border-blue-200/80 rounded-xl text-blue-900 tracking-wider">
+                    KHAMIS
+                  </div>
+                  <div className="p-2 bg-blue-50/80 border border-blue-200/80 rounded-xl text-blue-900 tracking-wider">
+                    JUMAAT
+                  </div>
+                  <div className="p-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 tracking-wider">
+                    SABTU
+                  </div>
+                  <div className="p-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 tracking-wider">
+                    AHAD
+                  </div>
+                </div>
+
+                {/* Grid Hari Kalendar Mengikut Susunan Hari */}
+                <div className="grid grid-cols-7 gap-2">
+                  {/* Sel Kosong (Spacers) untuk Hari Pertama Bulan */}
+                  {Array.from({ length: leadingSpacers }).map((_, sIdx) => (
+                    <div 
+                      key={`spacer-${sIdx}`} 
+                      className="p-2.5 rounded-xl border border-dashed border-slate-200/60 bg-slate-50/30" 
+                    />
+                  ))}
+
+                  {/* Kad Setiap Hari */}
+                  {dayRows.map(day => {
+                    let badgeBg = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                    if (day.badgeColor === 'red') badgeBg = 'bg-rose-100 text-rose-800 border-rose-200';
+                    else if (day.badgeColor === 'purple') badgeBg = 'bg-purple-100 text-purple-800 border-purple-200';
+                    else if (day.badgeColor === 'blue') badgeBg = 'bg-blue-100 text-blue-800 border-blue-200';
+                    else if (day.badgeColor === 'orange') badgeBg = 'bg-amber-100 text-amber-800 border-amber-200';
+                    else if (day.badgeColor === 'yellow') badgeBg = 'bg-yellow-100 text-yellow-800 border-yellow-300';
+                    else if (day.badgeColor === 'gray') badgeBg = 'bg-slate-100 text-slate-700 border-slate-200';
+
+                    return (
+                      <div
+                        key={day.dateStr}
+                        onClick={() => isAdmin && handleOpenDayModal(day.dateStr)}
+                        className={`p-2.5 rounded-xl border text-center transition-all ${
+                          isAdmin ? 'cursor-pointer hover:shadow-xs hover:border-blue-400' : ''
+                        } ${
+                          day.isSchoolDay
+                            ? 'bg-white border-slate-200'
+                            : 'bg-slate-50/90 border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-sm text-slate-900">{day.dayNumber}</span>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">
+                            {day.dayNameBM}
+                          </span>
+                          {day.isManualOverride && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 bg-yellow-200 text-yellow-900 border border-yellow-300 rounded" title="Pindaan Manual Pentadbir Sekolah">
+                              Pindaan
+                            </span>
+                          )}
+                        </div>
+                        <span className={`inline-block px-1.5 py-0.5 rounded-md text-[10px] font-bold mt-1 border ${badgeBg}`}>
+                          {day.isSchoolDay ? 'Sekolah' : 'Cuti'}
+                        </span>
+                        <p className="text-[10px] text-slate-600 font-medium mt-1 truncate" title={day.notes}>
+                          {day.notes}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -323,7 +371,7 @@ export const SettingsPage: React.FC = () => {
         <Modal
           isOpen={modalOpen}
           onClose={() => setModalOpen(false)}
-          title={`Tetapan Takwim: ${selectedDateStr}`}
+          title={`Tetapan Takwim: ${getDayNameBM(selectedDateStr)}, ${selectedDateStr}`}
           maxWidth="sm"
         >
           <form onSubmit={handleSaveDay} className="space-y-4">
