@@ -1,7 +1,7 @@
 import { AttendanceRecord, AuditLog, ClassItem, SchoolDay, SessionInfo, Student, UserProfile } from '../types';
 import { getTodayMalaysianDate, getMalaysianCurrentTime } from '../utils/dateUtils';
 
-const STORAGE_KEY = 'SKB_APP_DATABASE_V3';
+const STORAGE_KEY = 'SKB_APP_DATABASE_V4';
 
 export interface LocalDatabaseSchema {
   users: UserProfile[];
@@ -23,7 +23,7 @@ function getInitialSeed(): LocalDatabaseSchema {
     {
       uid: 'USR_ADMIN_01',
       email: 'admin@sigoo.my',
-      displayName: 'Guru Besar (SK Batandok)',
+      displayName: 'PK HEM (SK Batandok)',
       role: 'ADMIN',
       active: true,
       createdAt: now,

@@ -14,7 +14,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
   const getRoleBadge = (r: string | null) => {
     switch (r) {
       case 'ADMIN':
-        return <span className="bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 rounded-full border border-red-200">Pentadbir</span>;
+        return <span className="bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 rounded-full border border-red-200">PK HEM</span>;
       case 'TEACHER':
         return <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full border border-blue-200">Guru</span>;
       case 'STAFF':

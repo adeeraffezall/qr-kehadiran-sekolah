@@ -130,7 +130,7 @@ export async function getUserProfile(uid: string, email?: string): Promise<UserP
 
     if (lowerEmail.includes('admin') || lowerEmail.includes('besar') || lowerEmail.includes('pengetua')) {
       role = 'ADMIN';
-      displayName = 'Pentadbir Sistem (Guru Besar)';
+      displayName = 'PK HEM (SK Batandok)';
     } else if (lowerEmail.includes('staf') || lowerEmail.includes('kamarul')) {
       role = 'STAFF';
       displayName = 'Staf Pengimbas Kehadiran';

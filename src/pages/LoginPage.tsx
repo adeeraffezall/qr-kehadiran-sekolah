@@ -175,7 +175,7 @@ export const LoginPage: React.FC = () => {
           </form>
 
           <div className="mt-6 pt-4 border-t border-slate-100 text-center text-[11px] text-slate-400">
-            Akses dikhaskan untuk Guru Besar, Guru & Staf Sekolah Sahaja.
+            Akses dikhaskan untuk PK HEM, Guru & Staf Sekolah Sahaja.
           </div>
         </div>
 

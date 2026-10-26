@@ -154,7 +154,7 @@ export const UsersPage: React.FC = () => {
                               ? 'bg-blue-100 text-blue-800 border border-blue-200'
                               : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                         }`}>
-                          {u.role === 'ADMIN' ? 'Pentadbir (Admin)' : u.role === 'TEACHER' ? 'Guru' : 'Staf'}
+                          {u.role === 'ADMIN' ? 'PK HEM (Admin)' : u.role === 'TEACHER' ? 'Guru' : 'Staf'}
                         </span>
                       </td>
                       <td className="py-3 px-4">
@@ -231,7 +231,7 @@ export const UsersPage: React.FC = () => {
               >
                 <option value="TEACHER">Guru (Boleh Mengimbas & Melihat Kehadiran)</option>
                 <option value="STAFF">Staf (Boleh Mengimbas Sesi)</option>
-                <option value="ADMIN">Pentadbir (Akses Penuh Semua Tetapan)</option>
+                <option value="ADMIN">PK HEM / Pentadbir (Akses Penuh Semua Tetapan)</option>
               </select>
             </div>
 
