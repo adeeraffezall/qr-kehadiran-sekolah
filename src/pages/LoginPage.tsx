@@ -65,13 +65,13 @@ export const LoginPage: React.FC = () => {
 
   const handleSelectAccount = (role: 'ADMIN' | 'TEACHER' | 'STAFF') => {
     if (role === 'ADMIN') {
-      setEmail('admin@skbatandok.edu.my');
+      setEmail('admin@sigoo.my');
       setPassword('Batandok2026!');
     } else if (role === 'TEACHER') {
-      setEmail('guru@skbatandok.edu.my');
+      setEmail('guru@sigoo.my');
       setPassword('Batandok2026!');
     } else {
-      setEmail('staf@skbatandok.edu.my');
+      setEmail('staf@sigoo.my');
       setPassword('Batandok2026!');
     }
     setError(null);
@@ -140,7 +140,7 @@ export const LoginPage: React.FC = () => {
               type="button"
               onClick={() => handleSelectAccount('ADMIN')}
               className={`p-2 rounded-xl text-center border text-xs font-bold transition-all ${
-                email === 'admin@skbatandok.edu.my'
+                email === 'admin@sigoo.my'
                   ? 'bg-red-600 text-white border-red-600 shadow-xs'
                   : 'bg-red-50 text-red-800 border-red-200 hover:bg-red-100'
               }`}
@@ -151,7 +151,7 @@ export const LoginPage: React.FC = () => {
               type="button"
               onClick={() => handleSelectAccount('TEACHER')}
               className={`p-2 rounded-xl text-center border text-xs font-bold transition-all ${
-                email === 'guru@skbatandok.edu.my'
+                email === 'guru@sigoo.my'
                   ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                   : 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
               }`}
@@ -162,7 +162,7 @@ export const LoginPage: React.FC = () => {
               type="button"
               onClick={() => handleSelectAccount('STAFF')}
               className={`p-2 rounded-xl text-center border text-xs font-bold transition-all ${
-                email === 'staf@skbatandok.edu.my'
+                email === 'staf@sigoo.my'
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                   : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
               }`}
@@ -190,7 +190,7 @@ export const LoginPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@skbatandok.edu.my"
+                  placeholder="admin@sigoo.my"
                   className="w-full text-sm pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>

@@ -22,7 +22,7 @@ function getInitialSeed(): LocalDatabaseSchema {
   const users: UserProfile[] = [
     {
       uid: 'USR_ADMIN_01',
-      email: 'admin@skbatandok.edu.my',
+      email: 'admin@sigoo.my',
       displayName: 'Guru Besar (SK Batandok)',
       role: 'ADMIN',
       active: true,
@@ -31,7 +31,7 @@ function getInitialSeed(): LocalDatabaseSchema {
     },
     {
       uid: 'USR_TEACHER_01',
-      email: 'guru@skbatandok.edu.my',
+      email: 'guru@sigoo.my',
       displayName: 'Guru Bertugas (SK Batandok)',
       role: 'TEACHER',
       active: true,
@@ -40,7 +40,7 @@ function getInitialSeed(): LocalDatabaseSchema {
     },
     {
       uid: 'USR_STAFF_01',
-      email: 'staf@skbatandok.edu.my',
+      email: 'staf@sigoo.my',
       displayName: 'Staf Operasi (SK Batandok)',
       role: 'STAFF',
       active: true,
@@ -279,7 +279,7 @@ function getInitialSeed(): LocalDatabaseSchema {
     {
       id: 'LOG_INIT_01',
       actorUid: 'USR_ADMIN_01',
-      actorEmail: 'admin@skbatandok.edu.my',
+      actorEmail: 'admin@sigoo.my',
       action: 'BOOTSTRAP_FIRST_ADMIN',
       entityType: 'USER',
       entityId: 'USR_ADMIN_01',
@@ -289,7 +289,7 @@ function getInitialSeed(): LocalDatabaseSchema {
     {
       id: 'LOG_INIT_02',
       actorUid: 'USR_ADMIN_01',
-      actorEmail: 'admin@skbatandok.edu.my',
+      actorEmail: 'admin@sigoo.my',
       action: 'IMPORT_STUDENTS_BATCH',
       entityType: 'STUDENT',
       entityId: 'BATCH_2026',
