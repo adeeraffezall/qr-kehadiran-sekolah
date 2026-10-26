@@ -3,6 +3,7 @@ import { SessionInfo, SessionType } from '../../types';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { Lock, Unlock, Clock, AlertTriangle } from 'lucide-react';
+import { getLocalSessionConfig } from '../../services/settingsService';
 
 interface SessionControlProps {
   sessionInfo: SessionInfo;
@@ -17,9 +18,13 @@ export const SessionControl: React.FC<SessionControlProps> = ({
   isAdmin,
   isLoading
 }) => {
+  const currentConfig = getLocalSessionConfig();
+  const defaultMorningThreshold = currentConfig.morningLate || '07:00';
+  const defaultThreshold = sessionInfo.type === 'PAGI' ? defaultMorningThreshold : '13:00';
+
   const [modalOpen, setModalOpen] = useState(false);
   const [actionType, setActionType] = useState<'OPEN' | 'CLOSE' | 'REOPEN'>('CLOSE');
-  const [lateAfterTime, setLateAfterTime] = useState(sessionInfo.lateAfter || '07:30');
+  const [lateAfterTime, setLateAfterTime] = useState(sessionInfo.lateAfter || defaultThreshold);
   const [reason, setReason] = useState('');
 
   const isOpen = sessionInfo.status === 'OPEN';
@@ -27,7 +32,7 @@ export const SessionControl: React.FC<SessionControlProps> = ({
   const handleOpenModal = (act: 'OPEN' | 'CLOSE' | 'REOPEN') => {
     setActionType(act);
     setReason('');
-    setLateAfterTime(sessionInfo.lateAfter || (sessionInfo.type === 'PAGI' ? '07:30' : '13:00'));
+    setLateAfterTime(sessionInfo.lateAfter || defaultThreshold);
     setModalOpen(true);
   };
 
@@ -59,7 +64,7 @@ export const SessionControl: React.FC<SessionControlProps> = ({
             <div className="flex items-center space-x-3 text-xs text-slate-500 mt-0.5">
               <span className="flex items-center space-x-1">
                 <Clock className="w-3.5 h-3.5" />
-                <span>Ambang Lewat: <strong className="text-slate-700">{sessionInfo.lateAfter || '07:30'}</strong></span>
+                <span>Ambang Lewat: <strong className="text-slate-700">{sessionInfo.lateAfter || defaultThreshold}</strong></span>
               </span>
               <span>Waktu Sesi: {sessionInfo.startTime || '06:30'} - {sessionInfo.endTime || '08:00'}</span>
             </div>

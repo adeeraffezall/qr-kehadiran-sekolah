@@ -18,6 +18,7 @@ import { createAuditLog } from './auditService';
 import { hashTokenClient } from './qrService';
 import { getMalaysianCurrentTime, getTodayMalaysianDate } from '../utils/dateUtils';
 import { mockStore } from './mockDataStore';
+import { getLocalSessionConfig } from './settingsService';
 
 export async function recordStudentAttendance(
   token: string, 
@@ -101,7 +102,8 @@ export async function recordStudentAttendance(
     };
   }
 
-  const lateThreshold = sessionInfo.lateAfter || (sessionType === 'PAGI' ? '07:30' : '13:00');
+  const config = getLocalSessionConfig();
+  const lateThreshold = sessionInfo.lateAfter || (sessionType === 'PAGI' ? config.morningLate : '13:00');
   let status: AttendanceStatus = sessionType === 'PULANG' ? 'PULANG' : 'HADIR';
   if (sessionType === 'PAGI' && currentTime > lateThreshold) {
     status = 'LEWAT';
@@ -264,14 +266,15 @@ export async function manageSession(
   const isClosing = action === 'CLOSE';
   const newStatus = isClosing ? 'CLOSED' : 'OPEN';
 
+  const cfg = getLocalSessionConfig();
   const payload: SessionInfo = {
     id: sessionId,
     date: dateStr,
     type: sessionType,
     status: newStatus,
-    startTime: sessionType === 'PAGI' ? '06:30' : '12:30',
-    endTime: sessionType === 'PAGI' ? '08:00' : '14:30',
-    lateAfter: lateAfter || '07:30'
+    startTime: sessionType === 'PAGI' ? cfg.morningStart : cfg.dismissalStart,
+    endTime: sessionType === 'PAGI' ? cfg.morningEnd : cfg.dismissalEnd,
+    lateAfter: lateAfter || (sessionType === 'PAGI' ? cfg.morningLate : '13:00')
   };
 
   try {

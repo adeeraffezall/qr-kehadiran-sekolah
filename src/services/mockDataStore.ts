@@ -1,5 +1,6 @@
 import { AttendanceRecord, AuditLog, ClassItem, SchoolDay, SessionInfo, Student, UserProfile } from '../types';
 import { getTodayMalaysianDate, getMalaysianCurrentTime } from '../utils/dateUtils';
+import { getLocalSessionConfig } from './settingsService';
 
 const STORAGE_KEY = 'SKB_APP_DATABASE_V4';
 
@@ -1441,22 +1442,23 @@ function getInitialSeed(): LocalDatabaseSchema {
   }
 ];
 
+  const cfg = getLocalSessionConfig();
   const sessions: SessionInfo[] = [
     {
       id: `${today}_PAGI`,
       date: today,
       type: 'PAGI',
-      startTime: '06:30',
-      endTime: '08:00',
-      lateAfter: '07:30',
+      startTime: cfg.morningStart || '06:30',
+      endTime: cfg.morningEnd || '08:00',
+      lateAfter: cfg.morningLate || '07:00',
       status: 'OPEN'
     },
     {
       id: `${today}_PULANG`,
       date: today,
       type: 'PULANG',
-      startTime: '12:30',
-      endTime: '14:30',
+      startTime: cfg.dismissalStart || '12:30',
+      endTime: cfg.dismissalEnd || '14:30',
       lateAfter: '13:00',
       status: 'OPEN'
     }
@@ -1593,6 +1595,16 @@ export class MockDataStore {
       this.data = getInitialSeed();
       this.save();
     }
+
+    // Pastikan ambang lewat mematuhi tetapan waktu tersimpan
+    const config = getLocalSessionConfig();
+    if (this.data && Array.isArray(this.data.sessions)) {
+      this.data.sessions.forEach(s => {
+        if (s.type === 'PAGI' && (!s.lateAfter || s.lateAfter === '07:30')) {
+          s.lateAfter = config.morningLate;
+        }
+      });
+    }
   }
 
   private save() {
@@ -1709,17 +1721,21 @@ export class MockDataStore {
   getSession(date: string, type: 'PAGI' | 'PULANG'): SessionInfo {
     const id = `${date}_${type}`;
     let s = this.data.sessions.find(item => item.id === id);
+    const cfg = getLocalSessionConfig();
     if (!s) {
       s = {
         id,
         date,
         type,
-        startTime: type === 'PAGI' ? '06:30' : '12:30',
-        endTime: type === 'PAGI' ? '08:00' : '14:30',
-        lateAfter: type === 'PAGI' ? '07:30' : '13:00',
+        startTime: type === 'PAGI' ? (cfg.morningStart || '06:30') : (cfg.dismissalStart || '12:30'),
+        endTime: type === 'PAGI' ? (cfg.morningEnd || '08:00') : (cfg.dismissalEnd || '14:30'),
+        lateAfter: type === 'PAGI' ? (cfg.morningLate || '07:00') : '13:00',
         status: 'OPEN'
       };
       this.data.sessions.push(s);
+      this.save();
+    } else if (type === 'PAGI' && s.lateAfter === '07:30' && cfg.morningLate !== '07:30') {
+      s.lateAfter = cfg.morningLate;
       this.save();
     }
     return s;

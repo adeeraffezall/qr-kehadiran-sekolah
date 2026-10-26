@@ -5,6 +5,7 @@ import { getStudents } from '../services/studentService';
 import { getClasses } from '../services/classService';
 import { getAttendanceByDateAndSession, getSessionInfo } from '../services/attendanceService';
 import { getTodayMalaysianDate, formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
+import { getLocalSessionConfig } from '../services/settingsService';
 import { Student, ClassItem, AttendanceRecord, SessionInfo } from '../types';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -147,7 +148,7 @@ export const DashboardPage: React.FC = () => {
           <div>
             <span className="text-xs text-slate-500 font-medium">Hadir Lewat</span>
             <h3 className="text-2xl font-black text-amber-600 leading-tight">{morningLewat}</h3>
-            <span className="text-[11px] text-slate-400">Ambang: {morningSession?.lateAfter || '07:30'}</span>
+            <span className="text-[11px] text-slate-400">Ambang: {morningSession?.lateAfter || getLocalSessionConfig().morningLate}</span>
           </div>
         </div>
 

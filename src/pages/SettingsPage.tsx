@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { getSchoolDaysForMonth, setSchoolDay, resetSchoolDayToKPMDefault } from '../services/calendarService';
 import { resolveSchoolDay, getKPMHoliday } from '../services/kpmCalendarEngine';
+import { getSessionConfig, saveSessionConfig } from '../services/settingsService';
+import { manageSession } from '../services/attendanceService';
 import { getMonthNameBM, getTodayMalaysianDate, isWeekend, getDayNameBM } from '../utils/dateUtils';
 import { SchoolDay } from '../types';
 import { Card } from '../components/ui/Card';
@@ -26,16 +28,69 @@ export const SettingsPage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [isSavingDay, setIsSavingDay] = useState(false);
 
-  // Session Defaults Settings
+  // Session Defaults Settings (Piawai Ambang SK Batandok: 07:00 AM)
   const [morningStart, setMorningStart] = useState('06:30');
   const [morningEnd, setMorningEnd] = useState('08:00');
-  const [morningLate, setMorningLate] = useState('07:30');
+  const [morningLate, setMorningLate] = useState('07:00');
   const [dismissalStart, setDismissalStart] = useState('12:30');
   const [dismissalEnd, setDismissalEnd] = useState('14:30');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  // Muat turun tetapan waktu yang disimpan secara kekal
+  useEffect(() => {
+    const loadSessionSettings = async () => {
+      try {
+        const cfg = await getSessionConfig();
+        if (cfg) {
+          setMorningStart(cfg.morningStart || '06:30');
+          setMorningEnd(cfg.morningEnd || '08:00');
+          setMorningLate(cfg.morningLate || '07:00');
+          setDismissalStart(cfg.dismissalStart || '12:30');
+          setDismissalEnd(cfg.dismissalEnd || '14:30');
+        }
+      } catch (err) {
+        console.warn('Gagal memuat tetapan waktu tersimpan:', err);
+      }
+    };
+    loadSessionSettings();
+  }, []);
+
+  const handleSaveSessionTimes = async () => {
+    if (!user) return;
+    setIsSavingSettings(true);
+    try {
+      await saveSessionConfig(user.uid, user.email || '', {
+        morningStart,
+        morningEnd,
+        morningLate,
+        dismissalStart,
+        dismissalEnd
+      });
+
+      // Kemas kini sesi pagi aktif hari ini secara langsung
+      const today = getTodayMalaysianDate();
+      await manageSession(
+        user.uid,
+        user.email || '',
+        today,
+        'PAGI',
+        'OPEN',
+        morningLate,
+        `Penetapan ambang lewat ${morningLate} pagi dari Tetapan Waktu Rasmi`
+      );
+
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3500);
+    } catch (err: any) {
+      alert('Ralat menyimpan tetapan waktu: ' + err.message);
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   const loadCalendar = async () => {
     setLoading(true);
@@ -235,13 +290,11 @@ export const SettingsPage: React.FC = () => {
             <Button
               variant="primary"
               size="sm"
-              icon={<Save className="w-3.5 h-3.5" />}
-              onClick={() => {
-                setSettingsSaved(true);
-                setTimeout(() => setSettingsSaved(false), 3000);
-              }}
+              icon={isSavingSettings ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              onClick={handleSaveSessionTimes}
+              disabled={isSavingSettings}
             >
-              {settingsSaved ? 'Disimpan!' : 'Simpan Tetapan Waktu'}
+              {settingsSaved ? 'Disimpan ke Pangkalan Data!' : (isSavingSettings ? 'Menyimpan...' : 'Simpan Tetapan Waktu')}
             </Button>
           </div>
         )}
