@@ -107,3 +107,26 @@ export interface ScanResult {
   session?: SessionType;
   time?: string;
 }
+
+export type OperationalMode = 'RASMI' | 'PERCUBAAN';
+
+export interface CoverageMetrics {
+  totalEligibleStudents: number;
+  uniqueStudentsRecorded: number;
+  coveragePercentage: number;
+  unrecordedStudentsCount: number;
+  totalScanTransactions: number;
+  operationalMode: OperationalMode;
+}
+
+export interface ClassAttendancePerformance {
+  classId: string;
+  className: string;
+  yearLevel: number;
+  studentCount: number;
+  uniqueAttendedCount: number;
+  totalPresentSessions: number;
+  attendanceRate: number; // 0 - 100
+  statusColor: 'green' | 'yellow' | 'red' | 'gray';
+}
+

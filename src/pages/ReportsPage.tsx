@@ -20,8 +20,10 @@ import {
   toYMD,
   formatDisplayTime
 } from '../utils/dateUtils';
-import { AttendanceRecord, ClassItem, SchoolDay, Student } from '../types';
+import { AttendanceRecord, ClassItem, SchoolDay, Student, ClassAttendancePerformance } from '../types';
 import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
+import { StudentAttendanceHistoryModal } from '../components/reports/StudentAttendanceHistoryModal';
 import { 
   Download, 
   Calendar, 
@@ -37,22 +39,35 @@ import {
   ChevronLeft, 
   ChevronRight,
   Loader2,
-  FileSpreadsheet
+  Sparkles,
+  Info,
+  ArrowUpDown,
+  History,
+  CheckCircle,
+  HelpCircle,
+  Filter
 } from 'lucide-react';
 
 export type ReportType = 'HARIAN' | 'MINGGUAN' | 'BULANAN' | 'SELA_MASA';
+export type SortOption = 'name_asc' | 'name_desc' | 'class_asc' | 'rate_desc' | 'rate_asc';
+export type StatusFilterOption = 'ALL' | 'EXCELLENT' | 'ATTENTION' | 'CRITICAL' | 'UNRECORDED';
 
 export const ReportsPage: React.FC = () => {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const schoolName = import.meta.env.VITE_SCHOOL_NAME || 'SK BATANDOK BEAUFORT';
   const schoolCode = import.meta.env.VITE_SCHOOL_CODE || 'XBA6003';
   const todayStr = getTodayMalaysianDate();
   const currentDate = parseYMD(todayStr);
 
-  // 1. Mod Pilihan Laporan
-  const [reportType, setReportType] = useState<ReportType>('HARIAN');
+  // 1. Mod Sistem: Mod Percubaan (Trial Mode) Aktif Sebagai Lalai
+  const [isTrialMode, setIsTrialMode] = useState<boolean>(true);
+  const [operationalFilter, setOperationalFilter] = useState<'ALL' | 'OFFICIAL_ONLY'>('ALL');
+  const [officialStartDate, setOfficialStartDate] = useState<string>('2026-10-26');
 
-  // 2. State Penapis Mengikut Mod
+  // 2. Mod Pilihan Laporan
+  const [reportType, setReportType] = useState<ReportType>('BULANAN');
+
+  // 3. State Penapis Mengikut Mod
   // A. Harian
   const [dailyDate, setDailyDate] = useState<string>(todayStr);
   const [dailySession, setDailySession] = useState<'SEMUA' | 'PAGI' | 'PULANG'>('SEMUA');
@@ -66,7 +81,6 @@ export const ReportsPage: React.FC = () => {
   const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1);
 
   // D. Sela Masa (Custom Date Range)
-  // Default: 7 hari terakhir sehingga hari ini
   const initialStartDate = useMemo(() => {
     const d = parseYMD(todayStr);
     d.setDate(d.getDate() - 6);
@@ -75,11 +89,16 @@ export const ReportsPage: React.FC = () => {
   const [rangeStartDate, setRangeStartDate] = useState<string>(initialStartDate);
   const [rangeEndDate, setRangeEndDate] = useState<string>(todayStr);
 
-  // E. Penapis Umum
+  // E. Penapis & Isihan Umum
   const [selectedClassId, setSelectedClassId] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortBy, setSortBy] = useState<SortOption>('name_asc');
+  const [statusFilter, setStatusFilter] = useState<StatusFilterOption>('ALL');
 
-  // 3. State Data
+  // F. Modal Sejarah Murid
+  const [selectedStudentForHistory, setSelectedStudentForHistory] = useState<Student | null>(null);
+
+  // 4. State Data
   const [loading, setLoading] = useState<boolean>(true);
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -129,7 +148,7 @@ export const ReportsPage: React.FC = () => {
     }
   }, [reportType, dailyDate, dailySession, weekInfo, selectedYear, selectedMonth, rangeStartDate, rangeEndDate]);
 
-  // Muat turun data pangkalan data
+  // Muat data pangkalan data
   useEffect(() => {
     let isCancelled = false;
 
@@ -176,27 +195,39 @@ export const ReportsPage: React.FC = () => {
     if (reportType === 'HARIAN') {
       const dayCustom = schoolDaysMap.get(dailyDate);
       if (dayCustom) return dayCustom.isSchoolDay ? 1 : 0;
-      // Isnin-Jumaat = 1
       const d = parseYMD(dailyDate);
       const day = d.getDay();
       return (day >= 1 && day <= 5) ? 1 : 0;
     }
 
+    // Jika mod rasmi aktif dan penapis "Operasi Rasmi Sahaja" dipilih, hadkan tarikh mula kepada officialStartDate
+    let actualStart = effectiveStartDate;
+    if (!isTrialMode && operationalFilter === 'OFFICIAL_ONLY' && officialStartDate > effectiveStartDate) {
+      actualStart = officialStartDate;
+    }
+
     return countEligibleDaysBetween(
-      effectiveStartDate,
+      actualStart,
       effectiveEndDate,
       schoolDaysMap,
       todayStr // Hadkan kepada hari ini jika tempoh melangkaui masa hadapan
     );
-  }, [reportType, dailyDate, effectiveStartDate, effectiveEndDate, schoolDaysMap, todayStr]);
+  }, [reportType, dailyDate, effectiveStartDate, effectiveEndDate, schoolDaysMap, todayStr, isTrialMode, operationalFilter, officialStartDate]);
+
+  // Tapis rekod jika penapis Operasi Rasmi dipilih
+  const filteredRecords = useMemo(() => {
+    if (!isTrialMode && operationalFilter === 'OFFICIAL_ONLY') {
+      return records.filter(r => r.date >= officialStartDate);
+    }
+    return records;
+  }, [records, isTrialMode, operationalFilter, officialStartDate]);
 
   // Statistik Kehadiran Murid
   const studentStatsMap = useMemo(() => {
     const map = new Map<string, { hadir: number; lewat: number; tidakHadir: number; records: AttendanceRecord[] }>();
     students.forEach(s => map.set(s.id, { hadir: 0, lewat: 0, tidakHadir: 0, records: [] }));
 
-    records.forEach(r => {
-      // Tapis sesi jika Laporan Harian memilih sesi tertentu
+    filteredRecords.forEach(r => {
       if (reportType === 'HARIAN' && dailySession !== 'SEMUA' && r.session !== dailySession) {
         return;
       }
@@ -211,16 +242,20 @@ export const ReportsPage: React.FC = () => {
     });
 
     return map;
-  }, [students, records, reportType, dailySession]);
+  }, [students, filteredRecords, reportType, dailySession]);
 
   // Kumpulan statistik keseluruhan
   const summary = useMemo(() => {
     let totalHadir = 0;
     let totalLewat = 0;
+    let uniqueStudentsRecorded = 0;
 
     studentStatsMap.forEach(stat => {
       totalHadir += stat.hadir;
       totalLewat += stat.lewat;
+      if (stat.records.length > 0) {
+        uniqueStudentsRecorded++;
+      }
     });
 
     const activeEnrolment = students.length;
@@ -230,7 +265,6 @@ export const ReportsPage: React.FC = () => {
     let totalTidakHadirEstimated = 0;
 
     if (reportType === 'HARIAN') {
-      // Untuk harian: setiap murid hanya dikira hadir atau tidak hadir 1 kali
       const attendedCount = Array.from(studentStatsMap.values()).filter(s => (s.hadir + s.lewat) > 0).length;
       totalTidakHadirEstimated = Math.max(0, activeEnrolment - attendedCount);
       overallPercentage = activeEnrolment > 0 ? Math.round((attendedCount / activeEnrolment) * 1000) / 10 : 0;
@@ -243,19 +277,74 @@ export const ReportsPage: React.FC = () => {
       totalTidakHadirEstimated = Math.max(0, totalPossibleDays - totalTransactions);
     }
 
+    const coveragePercentage = activeEnrolment > 0
+      ? Math.round((uniqueStudentsRecorded / activeEnrolment) * 1000) / 10
+      : 0;
+
     return {
       totalHadir,
       totalLewat,
       totalTransactions,
       activeEnrolment,
       overallPercentage,
-      totalTidakHadirEstimated
+      totalTidakHadirEstimated,
+      uniqueStudentsRecorded,
+      coveragePercentage
     };
   }, [studentStatsMap, students.length, totalEligibleDays, reportType]);
 
-  // Tapis senarai murid untuk carian
+  // Analisis Prestasi Mengikut Kelas (Reka bentuk visual persis rujukan gambar pengguna)
+  const classPerformanceList = useMemo<ClassAttendancePerformance[]>(() => {
+    const eligibleDays = totalEligibleDays > 0 ? totalEligibleDays : 1;
+
+    return classes
+      .filter(c => c.active)
+      .map(c => {
+        const classStudents = students.filter(s => s.classId === c.id);
+        let classHadirLewat = 0;
+        let uniqueAttended = 0;
+
+        classStudents.forEach(s => {
+          const stat = studentStatsMap.get(s.id);
+          if (stat) {
+            classHadirLewat += (stat.hadir + stat.lewat);
+            if (stat.records.length > 0) uniqueAttended++;
+          }
+        });
+
+        const classPossible = classStudents.length * eligibleDays;
+        const rate = classPossible > 0 ? Math.round((classHadirLewat / classPossible) * 1000) / 10 : 0;
+
+        let statusColor: 'green' | 'yellow' | 'red' | 'gray' = 'gray';
+        if (uniqueAttended === 0 && classHadirLewat === 0) {
+          statusColor = 'gray';
+        } else if (rate >= 95) {
+          statusColor = 'green';
+        } else if (rate >= 85) {
+          statusColor = 'yellow';
+        } else {
+          statusColor = 'red';
+        }
+
+        return {
+          classId: c.id,
+          className: c.name,
+          yearLevel: c.yearLevel,
+          studentCount: classStudents.length,
+          uniqueAttendedCount: uniqueAttended,
+          totalPresentSessions: classHadirLewat,
+          attendanceRate: rate,
+          statusColor
+        };
+      })
+      .sort((a, b) => a.yearLevel - b.yearLevel || a.className.localeCompare(b.className));
+  }, [classes, students, studentStatsMap, totalEligibleDays]);
+
+  // Tapis & Susun Murid
   const filteredStudents = useMemo(() => {
-    return students.filter(s => {
+    const eligibleDays = totalEligibleDays > 0 ? totalEligibleDays : 1;
+
+    let result = students.filter(s => {
       // Carian teks
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -277,9 +366,40 @@ export const ReportsPage: React.FC = () => {
         if (dailyStatusFilter === 'TIDAK_HADIR' && isPresent) return false;
       }
 
+      // Tapis status kelayakan bulanan/sela masa
+      if ((reportType === 'BULANAN' || reportType === 'SELA_MASA') && statusFilter !== 'ALL') {
+        const stat = studentStatsMap.get(s.id);
+        const attended = (stat?.hadir || 0) + (stat?.lewat || 0);
+        const rate = Math.round((attended / eligibleDays) * 100);
+        const hasRecords = (stat?.records.length || 0) > 0;
+
+        if (statusFilter === 'EXCELLENT' && rate < 95) return false;
+        if (statusFilter === 'ATTENTION' && (rate < 85 || rate >= 95)) return false;
+        if (statusFilter === 'CRITICAL' && (rate >= 85 || !hasRecords)) return false;
+        if (statusFilter === 'UNRECORDED' && hasRecords) return false;
+      }
+
       return true;
     });
-  }, [students, searchQuery, reportType, dailyStatusFilter, studentStatsMap]);
+
+    // Isihan (Sorting)
+    result.sort((a, b) => {
+      if (sortBy === 'name_asc') return a.fullName.localeCompare(b.fullName);
+      if (sortBy === 'name_desc') return b.fullName.localeCompare(a.fullName);
+      if (sortBy === 'class_asc') return (a.className || '').localeCompare(b.className || '');
+      
+      const statA = studentStatsMap.get(a.id);
+      const statB = studentStatsMap.get(b.id);
+      const rateA = ((statA?.hadir || 0) + (statA?.lewat || 0)) / eligibleDays;
+      const rateB = ((statB?.hadir || 0) + (statB?.lewat || 0)) / eligibleDays;
+
+      if (sortBy === 'rate_desc') return rateB - rateA;
+      if (sortBy === 'rate_asc') return rateA - rateB;
+      return 0;
+    });
+
+    return result;
+  }, [students, searchQuery, reportType, dailyStatusFilter, statusFilter, sortBy, studentStatsMap, totalEligibleDays]);
 
   // Pengendali Eksport Excel Mengikut Mod
   const handleExportExcel = () => {
@@ -290,7 +410,7 @@ export const ReportsPage: React.FC = () => {
         sessionFilter: dailySession,
         students,
         classes,
-        attendanceRecords: records
+        attendanceRecords: filteredRecords
       });
     } else if (reportType === 'MINGGUAN') {
       exportWeeklyReportToExcel({
@@ -302,7 +422,7 @@ export const ReportsPage: React.FC = () => {
         totalSchoolDays: totalEligibleDays,
         students,
         classes,
-        attendanceRecords: records
+        attendanceRecords: filteredRecords
       });
     } else if (reportType === 'BULANAN') {
       exportAttendanceToExcel({
@@ -312,7 +432,9 @@ export const ReportsPage: React.FC = () => {
         totalSchoolDays: totalEligibleDays,
         students,
         classes,
-        attendanceRecords: records
+        attendanceRecords: filteredRecords,
+        isTrialMode,
+        schoolDaysMap
       });
     } else {
       // SELA MASA
@@ -323,12 +445,12 @@ export const ReportsPage: React.FC = () => {
         totalSchoolDays: totalEligibleDays,
         students,
         classes,
-        attendanceRecords: records
+        attendanceRecords: filteredRecords
       });
     }
   };
 
-  // Butang Pintas Tempoh Mingguan
+  // Navigasi Minggu
   const handleWeekShift = (offsetWeeks: number) => {
     const cur = parseYMD(weekAnchorDate);
     cur.setDate(cur.getDate() + (offsetWeeks * 7));
@@ -360,65 +482,98 @@ export const ReportsPage: React.FC = () => {
           </div>
         </div>
         <h2 className="text-sm font-black uppercase tracking-wider text-slate-900 mt-2">{reportTitleLabel}</h2>
-        <p className="text-xs text-slate-600 font-medium">{periodDescription} | Enrolmen: {students.length} Murid</p>
+        <p className="text-xs text-slate-600 font-medium">
+          {periodDescription} | Enrolmen Layak: {students.length} Murid | Status: {isTrialMode ? 'MOD PERCUBAAN' : 'OPERASI RASMI'}
+        </p>
       </div>
 
       {/* ============================================================== */}
-      {/* 2. PILIHAN MOD LAPORAN (Segmented Control Tabs)                 */}
+      {/* 2. BAR MOD SISTEM & PILIHAN LAPORAN                            */}
       {/* ============================================================== */}
-      <div className="no-print bg-white p-2 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2">
+      <div className="no-print bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        
+        {/* Mod Laporan Segmented Tabs */}
         <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
           <button
             onClick={() => setReportType('HARIAN')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
               reportType === 'HARIAN'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span>Laporan Harian</span>
+            <span>Harian</span>
           </button>
 
           <button
             onClick={() => setReportType('MINGGUAN')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
               reportType === 'MINGGUAN'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
             <CalendarDays className="w-3.5 h-3.5" />
-            <span>Laporan Mingguan</span>
+            <span>Mingguan</span>
           </button>
 
           <button
             onClick={() => setReportType('BULANAN')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
               reportType === 'BULANAN'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
             <BarChart3 className="w-3.5 h-3.5" />
-            <span>Laporan Bulanan</span>
+            <span>Bulanan</span>
           </button>
 
           <button
             onClick={() => setReportType('SELA_MASA')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
               reportType === 'SELA_MASA'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
             <Sliders className="w-3.5 h-3.5" />
-            <span>Sela Masa (Julat Tarikh)</span>
+            <span>Sela Masa</span>
           </button>
         </div>
 
-        {/* Butang Tindakan Eksport & Cetak */}
-        <div className="flex items-center gap-2">
+        {/* Status Mod Percubaan & Tindakan */}
+        <div className="flex flex-wrap items-center gap-2">
+          
+          {/* Suis Mod Percubaan / Operasi Rasmi */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              onClick={() => setIsTrialMode(true)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 ${
+                isTrialMode 
+                  ? 'bg-amber-500 text-white shadow-xs' 
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Sistem dalam tempoh ujian & penentukuran"
+            >
+              <Sparkles className="w-3 h-3" />
+              <span>Mod Percubaan</span>
+            </button>
+            <button
+              onClick={() => setIsTrialMode(false)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 ${
+                !isTrialMode 
+                  ? 'bg-emerald-600 text-white shadow-xs' 
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Operasi kehadiran rasmi sekolah"
+            >
+              <CheckCircle className="w-3 h-3" />
+              <span>Operasi Rasmi</span>
+            </button>
+          </div>
+
           <Button
             variant="outline"
             size="sm"
@@ -441,12 +596,76 @@ export const ReportsPage: React.FC = () => {
       </div>
 
       {/* ============================================================== */}
-      {/* 3. BAR PENAPIS DINAMIK MENGIKUT JENIS LAPORAN                   */}
+      {/* 3. KOMPONEN PENUNJUK LIPUTAN REKOD KEHADIRAN (Data Coverage)    */}
+      {/* ============================================================== */}
+      <div className={`p-4 rounded-2xl border shadow-xs transition-all ${
+        isTrialMode 
+          ? 'bg-amber-50/80 border-amber-200 text-amber-950' 
+          : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+      }`}>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-start space-x-3.5 max-w-2xl">
+            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 font-bold text-xs mt-0.5 ${
+              isTrialMode ? 'bg-amber-200 text-amber-900' : 'bg-emerald-200 text-emerald-900'
+            }`}>
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h4 className="font-bold text-slate-900 text-xs">
+                  Liputan Rekod Kehadiran Murid
+                </h4>
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                  isTrialMode 
+                    ? 'bg-amber-200 text-amber-900 border border-amber-300' 
+                    : 'bg-emerald-200 text-emerald-900 border border-emerald-300'
+                }`}>
+                  {isTrialMode ? 'MOD PERCUBAAN' : 'OPERASI RASMI'}
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-800 mt-1 font-medium">
+                <strong className="font-bold text-slate-950">{summary.uniqueStudentsRecorded} daripada {summary.activeEnrolment} murid</strong> mempunyai rekod kehadiran dalam tempoh ini ({summary.coveragePercentage}% Liputan).
+              </p>
+
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                {isTrialMode 
+                  ? `Sistem sedang dalam mod percubaan. Purata kumulatif sekolah (${summary.overallPercentage}%) mencerminkan ${summary.totalTransactions} transaksi imbasan daripada ${summary.activeEnrolment * totalEligibleDays} hari-murid layak (${totalEligibleDays} hari persekolahan layak).`
+                  : `Kadar kehadiran rasmi sekolah ialah ${summary.overallPercentage}% berasaskan kehadiran kumulatif fizikal sepanjang ${totalEligibleDays} hari persekolahan layak.`}
+              </p>
+            </div>
+          </div>
+
+          {/* Bar Kemajuan Liputan Data */}
+          <div className="min-w-[220px]">
+            <div className="flex justify-between text-xs font-bold text-slate-800 mb-1">
+              <span>Liputan Murid Imbas:</span>
+              <span className={`font-mono ${isTrialMode ? 'text-amber-800' : 'text-emerald-800'}`}>
+                {summary.coveragePercentage}%
+              </span>
+            </div>
+            <div className="w-full h-2.5 bg-slate-200/80 rounded-full overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all duration-500 ${
+                  isTrialMode ? 'bg-amber-600' : 'bg-emerald-600'
+                }`} 
+                style={{ width: `${Math.min(100, Math.max(0, summary.coveragePercentage))}%` }}
+              />
+            </div>
+            <span className="text-[10px] text-slate-500 mt-1 block text-right font-medium">
+              {summary.activeEnrolment - summary.uniqueStudentsRecorded} murid belum mula mengimbas
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================== */}
+      {/* 4. BAR KAWALAN PENAPIS DINAMIK                                  */}
       {/* ============================================================== */}
       <div className="no-print bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           
-          {/* A. Kawalan Untuk Laporan Harian */}
+          {/* A. Kawalan Harian */}
           {reportType === 'HARIAN' && (
             <div className="flex flex-wrap items-center gap-3">
               <div>
@@ -503,7 +722,7 @@ export const ReportsPage: React.FC = () => {
             </div>
           )}
 
-          {/* B. Kawalan Untuk Laporan Mingguan */}
+          {/* B. Kawalan Mingguan */}
           {reportType === 'MINGGUAN' && (
             <div className="flex flex-wrap items-center gap-3">
               <div>
@@ -556,7 +775,7 @@ export const ReportsPage: React.FC = () => {
             </div>
           )}
 
-          {/* C. Kawalan Untuk Laporan Bulanan */}
+          {/* C. Kawalan Bulanan */}
           {reportType === 'BULANAN' && (
             <div className="flex flex-wrap items-center gap-3">
               <div>
@@ -591,7 +810,7 @@ export const ReportsPage: React.FC = () => {
             </div>
           )}
 
-          {/* D. Kawalan Untuk Laporan Sela Masa (Custom Range) */}
+          {/* D. Kawalan Sela Masa */}
           {reportType === 'SELA_MASA' && (
             <div className="flex flex-wrap items-center gap-3">
               <div>
@@ -644,7 +863,7 @@ export const ReportsPage: React.FC = () => {
             </div>
           )}
 
-          {/* E. Penapis Kelas (Sentiasa Ada Untuk Semua Mod) */}
+          {/* E. Penapis Kelas Sejagat */}
           <div className="flex flex-wrap items-center gap-3 ml-auto">
             <div>
               <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
@@ -653,7 +872,7 @@ export const ReportsPage: React.FC = () => {
               <select
                 value={selectedClassId}
                 onChange={(e) => setSelectedClassId(e.target.value)}
-                className="text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-semibold text-slate-800 shadow-xs focus:ring-2 focus:ring-blue-500 min-w-[150px]"
+                className="text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-semibold text-slate-800 shadow-xs focus:ring-2 focus:ring-blue-500 min-w-[160px]"
               >
                 <option value="ALL">Semua Kelas ({students.length} Murid)</option>
                 {classes.filter(c => c.active).map(c => (
@@ -665,8 +884,9 @@ export const ReportsPage: React.FC = () => {
 
         </div>
 
-        {/* Bar Carian Pantas & Penapis Status Harian */}
+        {/* Bar Carian, Isihan, & Penapis Prestasi */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+          
           <div className="relative flex-1 min-w-[240px] max-w-md">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
@@ -678,130 +898,174 @@ export const ReportsPage: React.FC = () => {
             />
           </div>
 
-          {/* Penapis Pantas Status untuk Harian */}
-          {reportType === 'HARIAN' && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-bold text-slate-400 uppercase mr-1">Tapis Status:</span>
-              <button
-                type="button"
-                onClick={() => setDailyStatusFilter('SEMUA')}
-                className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                  dailyStatusFilter === 'SEMUA' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
+          <div className="flex flex-wrap items-center gap-2">
+            
+            {/* Isihan Murid */}
+            <div className="flex items-center space-x-1">
+              <span className="text-[11px] font-bold text-slate-400 uppercase">Susun:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="text-xs px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-medium"
               >
-                Semua
-              </button>
-
-              {dailySession === 'PULANG' ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setDailyStatusFilter('HADIR')}
-                    className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                      dailyStatusFilter === 'HADIR' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-                    }`}
-                  >
-                    Telah Pulang
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDailyStatusFilter('TIDAK_HADIR')}
-                    className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                      dailyStatusFilter === 'TIDAK_HADIR' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
-                    }`}
-                  >
-                    Belum Pulang
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setDailyStatusFilter('HADIR')}
-                    className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                      dailyStatusFilter === 'HADIR' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                    }`}
-                  >
-                    Hadir Tepat
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDailyStatusFilter('LEWAT')}
-                    className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                      dailyStatusFilter === 'LEWAT' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-                    }`}
-                  >
-                    Lewat
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDailyStatusFilter('TIDAK_HADIR')}
-                    className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                      dailyStatusFilter === 'TIDAK_HADIR' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
-                    }`}
-                  >
-                    Belum / Tidak Hadir
-                  </button>
-                </>
-              )}
+                <option value="name_asc">Nama (A - Z)</option>
+                <option value="name_desc">Nama (Z - A)</option>
+                <option value="class_asc">Kelas</option>
+                <option value="rate_desc">Kadar Kehadiran (Tinggi ke Rendah)</option>
+                <option value="rate_asc">Kadar Kehadiran (Rendah ke Tinggi)</option>
+              </select>
             </div>
-          )}
+
+            {/* Penapis Status Prestasi (Bulanan / Sela Masa) */}
+            {(reportType === 'BULANAN' || reportType === 'SELA_MASA') && (
+              <div className="flex items-center space-x-1">
+                <span className="text-[11px] font-bold text-slate-400 uppercase">Status:</span>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                  className="text-xs px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-medium"
+                >
+                  <option value="ALL">Semua Status</option>
+                  <option value="EXCELLENT">Cemerlang (≥95%)</option>
+                  <option value="ATTENTION">Perhatian (85% - 94%)</option>
+                  <option value="CRITICAL">Perlu Semakan (&lt;85%)</option>
+                  <option value="UNRECORDED">Belum Ada Rekod</option>
+                </select>
+              </div>
+            )}
+
+            {/* Penapis Pantas Status untuk Harian */}
+            {reportType === 'HARIAN' && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-slate-400 uppercase mr-1">Tapis:</span>
+                <button
+                  type="button"
+                  onClick={() => setDailyStatusFilter('SEMUA')}
+                  className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                    dailyStatusFilter === 'SEMUA' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Semua
+                </button>
+
+                {dailySession === 'PULANG' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setDailyStatusFilter('HADIR')}
+                      className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                        dailyStatusFilter === 'HADIR' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                      }`}
+                    >
+                      Telah Pulang
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDailyStatusFilter('TIDAK_HADIR')}
+                      className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                        dailyStatusFilter === 'TIDAK_HADIR' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                      }`}
+                    >
+                      Belum Pulang
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setDailyStatusFilter('HADIR')}
+                      className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                        dailyStatusFilter === 'HADIR' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      }`}
+                    >
+                      Hadir Tepat
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDailyStatusFilter('LEWAT')}
+                      className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                        dailyStatusFilter === 'LEWAT' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                      }`}
+                    >
+                      Lewat
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDailyStatusFilter('TIDAK_HADIR')}
+                      className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                        dailyStatusFilter === 'TIDAK_HADIR' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                      }`}
+                    >
+                      Belum Hadir
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+          </div>
+
         </div>
       </div>
 
       {/* ============================================================== */}
-      {/* 4. KAD RINGKASAN EKSEKUTIF (KPI Cards)                         */}
+      {/* 5. KAD RINGKASAN EKSEKUTIF (KPI Cards)                         */}
       {/* ============================================================== */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* Kad 1: Hari Persekolahan / Tarikh */}
+        {/* Kad 1: Hari Persekolahan Layak */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
           <span className="text-xs text-slate-500 font-medium">Hari Persekolahan Layak</span>
           <h3 className="text-2xl font-black text-slate-900 mt-1">
-            {totalEligibleDays} {totalEligibleDays === 1 ? 'Hari' : 'Hari'}
+            {totalEligibleDays} Hari
           </h3>
           <span className="text-[11px] text-slate-400">
             {reportType === 'HARIAN' 
               ? (totalEligibleDays > 0 ? 'Hari Persekolahan Rasmi' : 'Cuti / Hujung Minggu')
-              : 'Tidak termasuk cuti/hujung minggu'}
+              : 'Tidak termasuk cuti rasmi & hujung minggu'}
           </span>
         </div>
 
         {/* Kad 2: Jumlah Murid Terlibat */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-xs text-slate-500 font-medium">Jumlah Murid Terlibat</span>
+          <span className="text-xs text-slate-500 font-medium">Jumlah Murid Layak</span>
           <h3 className="text-2xl font-black text-blue-600 mt-1">
-            {students.length} Murid
+            {summary.activeEnrolment} Murid
           </h3>
           <span className="text-[11px] text-slate-400">
-            {selectedClassId === 'ALL' ? 'Seluruh SK Batandok (7 Kelas)' : 'Kelas Terpilih'}
+            {selectedClassId === 'ALL' ? 'Enrolmen 7 Kelas SK Batandok' : 'Kelas Terpilih'}
           </span>
         </div>
 
-        {/* Kad 3: Transaksi Kehadiran (Hadir + Lewat) */}
+        {/* Kad 3: Transaksi Hadir vs Murid Unik */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-xs text-slate-500 font-medium">Kehadiran Fizikal</span>
+          <span className="text-xs text-slate-500 font-medium">
+            {dailySession === 'PULANG' ? 'Transaksi Imbasan Pulang' : 'Jumlah Transaksi Hadir'}
+          </span>
           <div className="flex items-baseline gap-2 mt-1">
-            <h3 className="text-2xl font-black text-emerald-600">
+            <h3 className={`text-2xl font-black ${dailySession === 'PULANG' ? 'text-indigo-600' : 'text-emerald-600'}`}>
               {summary.totalTransactions}
             </h3>
-            {summary.totalLewat > 0 && (
-              <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                {summary.totalLewat} lewat
-              </span>
-            )}
+            <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+              {summary.uniqueStudentsRecorded} murid unik
+            </span>
           </div>
           <span className="text-[11px] text-slate-400">
             {summary.totalHadir} tepat • {summary.totalLewat} lewat direkodkan
           </span>
         </div>
 
-        {/* Kad 4: Purata Peratusan Kehadiran */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-xs text-slate-500 font-medium">Purata Peratusan Kehadiran</span>
+        {/* Kad 4: Purata Kehadiran Rasmi Sekolah */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs relative group">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-500 font-medium">Purata Kehadiran Rasmi</span>
+            <div className="cursor-help text-slate-400 hover:text-slate-600" title="Klik untuk penjelasan formula">
+              <Info className="w-3.5 h-3.5" />
+            </div>
+          </div>
           <div className="flex items-baseline gap-2 mt-1">
             <h3 className={`text-2xl font-black ${
-              summary.overallPercentage >= 95 ? 'text-emerald-700' : summary.overallPercentage >= 85 ? 'text-blue-700' : 'text-rose-700'
+              summary.overallPercentage >= 95 ? 'text-emerald-700' : summary.overallPercentage >= 85 ? 'text-amber-600' : 'text-rose-700'
             }`}>
               {summary.overallPercentage}%
             </h3>
@@ -809,21 +1073,113 @@ export const ReportsPage: React.FC = () => {
               summary.overallPercentage >= 95 
                 ? 'bg-emerald-100 text-emerald-800' 
                 : summary.overallPercentage >= 85 
-                ? 'bg-blue-100 text-blue-800' 
+                ? 'bg-amber-100 text-amber-800' 
                 : 'bg-rose-100 text-rose-800'
             }`}>
-              {summary.overallPercentage >= 95 ? 'Cemerlang' : summary.overallPercentage >= 85 ? 'Sederhana' : 'Perhatian'}
+              {summary.overallPercentage >= 95 ? 'Cemerlang' : summary.overallPercentage >= 85 ? 'Perhatian' : 'Perlu Semakan'}
             </span>
           </div>
-          <span className="text-[11px] text-slate-400">
-            Sasaran KPM: ≥ 95.0%
+          <span className="text-[11px] text-slate-400 block truncate">
+            Formula: (Hadir+Lewat) ÷ ({summary.activeEnrolment}×{totalEligibleDays})
           </span>
         </div>
 
       </div>
 
       {/* ============================================================== */}
-      {/* 5. JADUAL DATA UTAMA (Mengikut Mod Pilihan)                     */}
+      {/* 6. KOMPONEN PRESTASI KELAS (Persis Gambar Rujukan Pengguna)     */}
+      {/* ============================================================== */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+          <div>
+            <h3 className="font-bold text-slate-900 text-sm">Prestasi kelas</h3>
+            <p className="text-[11px] text-slate-500">
+              Analisis Kehadiran Mengikut Kelas (SK Batandok Beaufort)
+            </p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="text-[11px] text-slate-400 font-mono">
+              {isTrialMode ? 'Data Percubaan' : 'Data Operasi Rasmi'}
+            </span>
+            {selectedClassId !== 'ALL' && (
+              <button
+                onClick={() => setSelectedClassId('ALL')}
+                className="text-xs font-bold text-blue-600 hover:underline px-2 py-1 bg-blue-50 rounded-lg"
+              >
+                Tunjuk Semua Kelas
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Senarai Bar Prestasi Kelas (Sesuai dengan Tangkap Layar Rujukan) */}
+        <div className="space-y-4">
+          {classPerformanceList.map((cp) => {
+            const isSelected = selectedClassId === cp.classId;
+
+            return (
+              <div 
+                key={cp.classId}
+                onClick={() => setSelectedClassId(isSelected ? 'ALL' : cp.classId)}
+                className={`group cursor-pointer p-3 rounded-xl transition-all ${
+                  isSelected 
+                    ? 'bg-blue-50/80 border border-blue-300 ring-2 ring-blue-500/20' 
+                    : 'hover:bg-slate-50 border border-transparent'
+                }`}
+                title={`Klik untuk menapis senarai murid kelas ${cp.className}`}
+              >
+                <div className="flex items-center justify-between text-xs font-bold mb-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-slate-900 group-hover:text-blue-700 transition-colors">
+                      {cp.className}
+                    </span>
+                    <span className="text-[11px] font-normal text-slate-400">
+                      ({cp.studentCount} murid • {cp.uniqueAttendedCount} telah imbas)
+                    </span>
+                    {isSelected && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 bg-blue-600 text-white rounded">
+                        Dipilih
+                      </span>
+                    )}
+                  </div>
+
+                  <span className={`font-mono text-sm font-black ${
+                    cp.statusColor === 'green' ? 'text-emerald-600' :
+                    cp.statusColor === 'yellow' ? 'text-amber-500' :
+                    cp.statusColor === 'red' ? 'text-rose-600' : 'text-slate-400'
+                  }`}>
+                    {cp.uniqueAttendedCount === 0 && cp.totalPresentSessions === 0 
+                      ? '0%' 
+                      : `${cp.attendanceRate}%`}
+                  </span>
+                </div>
+
+                {/* Progress Bar Horizontal Tebal (Persis Gambar) */}
+                <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-700 ${
+                      cp.statusColor === 'green' ? 'bg-emerald-600' :
+                      cp.statusColor === 'yellow' ? 'bg-amber-500' :
+                      cp.statusColor === 'red' ? 'bg-rose-600' : 'bg-slate-300'
+                    }`}
+                    style={{ width: `${Math.max(cp.attendanceRate, cp.uniqueAttendedCount > 0 ? 3 : 0)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Nota Kaki */}
+        <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500">
+          <p>
+            Pentadbir boleh klik nama kelas untuk melihat senarai murid dan butiran kehadiran bagi kelas tersebut.
+          </p>
+        </div>
+      </div>
+
+      {/* ============================================================== */}
+      {/* 7. JADUAL DATA UTAMA INDIVIDU MURID                             */}
       {/* ============================================================== */}
       {loading ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
@@ -841,6 +1197,7 @@ export const ReportsPage: React.FC = () => {
               </h3>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 Memaparkan {filteredStudents.length} daripada {students.length} murid berdaftar
+                {selectedClassId !== 'ALL' && ` (Ditapis untuk Kelas ${classes.find(c => c.id === selectedClassId)?.name})`}
               </p>
             </div>
 
@@ -848,7 +1205,7 @@ export const ReportsPage: React.FC = () => {
               {reportType === 'HARIAN' ? (
                 <span>Status Semakan: {dailySession === 'SEMUA' ? 'Pagi & Pulang' : `Sesi ${dailySession}`}</span>
               ) : (
-                <span>Formula: (Hadir + Lewat) ÷ {totalEligibleDays > 0 ? totalEligibleDays : 1} hari layak × 100%</span>
+                <span>Formula Rasmi: (Hadir + Lewat) ÷ {totalEligibleDays > 0 ? totalEligibleDays : 1} hari layak × 100%</span>
               )}
             </div>
           </div>
@@ -869,7 +1226,7 @@ export const ReportsPage: React.FC = () => {
                     <th className="py-3 px-4 text-center">Waktu Imbasan</th>
                     <th className="py-3 px-4 text-center">Sesi</th>
                     <th className="py-3 px-4 text-center">Kaedah</th>
-                    <th className="py-3 px-4 text-right">Catatan</th>
+                    <th className="py-3 px-4 text-right">Tindakan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -886,7 +1243,6 @@ export const ReportsPage: React.FC = () => {
                       const primaryRec = recs[0];
                       const isPresent = recs.length > 0;
                       const isLate = recs.some(r => r.status === 'LEWAT');
-
                       const isPulang = dailySession === 'PULANG' || primaryRec?.session === 'PULANG';
 
                       let badge = (
@@ -946,8 +1302,15 @@ export const ReportsPage: React.FC = () => {
                               </span>
                             ) : '-'}
                           </td>
-                          <td className="py-3 px-4 text-right text-slate-400 text-[11px]">
-                            {primaryRec?.correctionReason || '-'}
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              onClick={() => setSelectedStudentForHistory(s)}
+                              className="px-2 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center space-x-1"
+                              title="Lihat Sejarah Imbasan Murid"
+                            >
+                              <History className="w-3.5 h-3.5" />
+                              <span>Sejarah</span>
+                            </button>
                           </td>
                         </tr>
                       );
@@ -959,7 +1322,7 @@ export const ReportsPage: React.FC = () => {
           )}
 
           {/* ========================================================== */}
-          {/* B. PAPARAN KHAS: LAPORAN MINGGUAN (Matriks 5 Hari Isnin-Jum)*/}
+          {/* B. PAPARAN KHAS: LAPORAN MINGGUAN                           */}
           {/* ========================================================== */}
           {reportType === 'MINGGUAN' && (
             <div className="overflow-x-auto">
@@ -978,12 +1341,13 @@ export const ReportsPage: React.FC = () => {
                     <th className="py-3 px-3 text-center">Hadir</th>
                     <th className="py-3 px-3 text-center">Lewat</th>
                     <th className="py-3 px-3 text-center">Peratusan</th>
+                    <th className="py-3 px-3 text-right">Tindakan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredStudents.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-8 text-center text-slate-400">
+                      <td colSpan={11} className="py-8 text-center text-slate-400">
                         Tiada murid yang sepadan dengan carian.
                       </td>
                     </tr>
@@ -1023,7 +1387,6 @@ export const ReportsPage: React.FC = () => {
                             </td>
                           );
                         } else {
-                          // Semak sama ada hari tersebut hari hadapan
                           const isFuture = d.date > todayStr;
                           return (
                             <td key={d.date} className="py-2.5 px-2 text-center">
@@ -1058,6 +1421,15 @@ export const ReportsPage: React.FC = () => {
                               {pct}%
                             </span>
                           </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <button
+                              onClick={() => setSelectedStudentForHistory(s)}
+                              className="px-2 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center space-x-1"
+                              title="Lihat Sejarah"
+                            >
+                              <History className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
                         </tr>
                       );
                     })
@@ -1083,14 +1455,15 @@ export const ReportsPage: React.FC = () => {
                     <th className="py-3 px-4 text-center">Lewat</th>
                     <th className="py-3 px-4 text-center">Tidak Hadir</th>
                     <th className="py-3 px-4 text-center">Peratusan (%)</th>
-                    <th className="py-3 px-4 text-right">Tindakan HEM</th>
+                    <th className="py-3 px-4 text-center">Status Kelengkapan</th>
+                    <th className="py-3 px-4 text-right">Tindakan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredStudents.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-400">
-                        Tiada rekod murid yang sepadan dengan carian.
+                      <td colSpan={10} className="py-8 text-center text-slate-400">
+                        Tiada rekod murid yang sepadan dengan kriteria carian/penapis.
                       </td>
                     </tr>
                   ) : (
@@ -1100,31 +1473,56 @@ export const ReportsPage: React.FC = () => {
                       const attended = stat.hadir + stat.lewat;
                       const percent = Math.min(100, Math.round((attended / eligible) * 1000) / 10);
                       const estimatedAbsent = Math.max(0, eligible - attended);
+                      const hasRecords = stat.records.length > 0;
+
+                      let rateBadgeClass = 'bg-slate-100 text-slate-600';
+                      if (hasRecords) {
+                        if (percent >= 95) rateBadgeClass = 'bg-emerald-100 text-emerald-800';
+                        else if (percent >= 85) rateBadgeClass = 'bg-amber-100 text-amber-800';
+                        else rateBadgeClass = 'bg-rose-100 text-rose-800';
+                      }
 
                       return (
                         <tr key={s.id} className="hover:bg-slate-50 transition-colors">
                           <td className="py-3 px-4 font-mono text-slate-400">{idx + 1}</td>
-                          <td className="py-3 px-4 font-bold text-slate-900">{s.fullName}</td>
+                          <td className="py-3 px-4">
+                            <div className="font-bold text-slate-900">{s.fullName}</div>
+                            {s.role && s.role !== 'Murid' && (
+                              <span className="text-[10px] text-blue-600 font-semibold">{s.role}</span>
+                            )}
+                          </td>
                           <td className="py-3 px-4 font-mono text-slate-500">{s.studentNumber || '-'}</td>
                           <td className="py-3 px-4 font-semibold text-blue-700">{s.className}</td>
                           <td className="py-3 px-4 text-center text-emerald-700 font-bold">{stat.hadir}</td>
                           <td className="py-3 px-4 text-center text-amber-700 font-bold">{stat.lewat}</td>
-                          <td className="py-3 px-4 text-center text-rose-700 font-bold">{estimatedAbsent}</td>
+                          <td className="py-3 px-4 text-center text-rose-700 font-bold">
+                            {hasRecords ? estimatedAbsent : '-'}
+                          </td>
                           <td className="py-3 px-4 text-center">
-                            <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-xs ${
-                              percent >= 90 ? 'bg-emerald-100 text-emerald-800' : percent >= 75 ? 'bg-blue-100 text-blue-800' : 'bg-rose-100 text-rose-800'
-                            }`}>
+                            <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-xs ${rateBadgeClass}`}>
                               {percent}%
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-right">
-                            {estimatedAbsent >= 3 ? (
-                              <span className="text-[11px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-full inline-block">
-                                Surat Amaran
+                          <td className="py-3 px-4 text-center">
+                            {hasRecords ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                Lengkap ({stat.records.length} Imbasan)
                               </span>
                             ) : (
-                              <span className="text-[11px] text-slate-400">Normal</span>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
+                                Belum Ada Rekod
+                              </span>
                             )}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              onClick={() => setSelectedStudentForHistory(s)}
+                              className="px-2.5 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center space-x-1"
+                              title="Buka Sejarah Imbasan Murid"
+                            >
+                              <History className="w-3.5 h-3.5" />
+                              <span>Sejarah</span>
+                            </button>
                           </td>
                         </tr>
                       );
@@ -1139,7 +1537,7 @@ export const ReportsPage: React.FC = () => {
       )}
 
       {/* ============================================================== */}
-      {/* 6. RUANG TANDATANGAN PENGESAHAN (Muncul ketika cetak laporan)   */}
+      {/* 8. RUANG TANDATANGAN PENGESAHAN (Muncul ketika cetak laporan)   */}
       {/* ============================================================== */}
       <div className="print-only pt-8 mt-12 border-t border-slate-300">
         <div className="grid grid-cols-2 gap-12 text-center text-xs">
@@ -1153,12 +1551,24 @@ export const ReportsPage: React.FC = () => {
           <div>
             <p className="font-semibold text-slate-700 mb-16">Disahkan Oleh:</p>
             <div className="border-t border-slate-400 w-48 mx-auto pt-1 font-bold text-slate-900">
-              Penolong Kanan HEM
+              PK HEM (SK Batandok)
             </div>
             <p className="text-[10px] text-slate-500">SK Batandok Beaufort</p>
           </div>
         </div>
       </div>
+
+      {/* Modal Sejarah Imbasan Harian Murid */}
+      {selectedStudentForHistory && (
+        <StudentAttendanceHistoryModal
+          isOpen={!!selectedStudentForHistory}
+          onClose={() => setSelectedStudentForHistory(null)}
+          student={selectedStudentForHistory}
+          periodLabel={periodDescription}
+          eligibleDaysCount={totalEligibleDays}
+          records={filteredRecords}
+        />
+      )}
 
     </div>
   );

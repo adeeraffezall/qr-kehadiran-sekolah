@@ -108,4 +108,61 @@ describe('Ujian Takwim Persekolahan, Pengiraan Peratusan & Eksport Excel (Tests 
     const rangeList = getDaysInDateRange('2026-10-20', '2026-10-23');
     expect(rangeList).toEqual(['2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23']);
   });
+
+  // 18. Formula pengesahan matematik KPM & metrik Liputan Murid
+  it('18. Mengesahkan pengiraan kadar 0.1% dan liputan 1.1% bagi 1 murid hadir daripada 95 murid dan 18 hari layak', () => {
+    const totalEnrolment = 95;
+    const eligibleSchoolDays = 18;
+    const totalTransactions = 1; // 1 murid mengimbas hadir 1 kali
+    const uniqueStudentsRecorded = 1;
+
+    // Formula Rasmi Kehadiran Kumulatif KPM:
+    // (Jumlah Hadir + Lewat) ÷ (Enrolmen × Hari Layak) × 100%
+    const totalPossiblePupilDays = totalEnrolment * eligibleSchoolDays; // 1,710 hari-murid
+    expect(totalPossiblePupilDays).toBe(1710);
+
+    const rawRate = (totalTransactions / totalPossiblePupilDays) * 100;
+    const roundedRate = Math.round(rawRate * 10) / 10;
+    // 1 / 1710 * 100 = 0.058479% -> dibundar kepada 0.1%
+    expect(roundedRate).toBe(0.1);
+
+    // Formula Liputan Data (Coverage):
+    // Murid Unik Direkod ÷ Enrolmen × 100%
+    const rawCoverage = (uniqueStudentsRecorded / totalEnrolment) * 100;
+    const roundedCoverage = Math.round(rawCoverage * 10) / 10;
+    // 1 / 95 * 100 = 1.0526% -> dibundar kepada 1.1%
+    expect(roundedCoverage).toBe(1.1);
+  });
+
+  it('19. Mengendalikan keadaan sifar rekod tanpa ralat pembahagian dengan sifar (NaN atau Infinity)', () => {
+    const totalEnrolment = 95;
+    const eligibleSchoolDays = 0; // tiada hari layak atau data kosong
+    const totalTransactions = 0;
+    const uniqueStudentsRecorded = 0;
+
+    const totalPossible = totalEnrolment * (eligibleSchoolDays > 0 ? eligibleSchoolDays : 1);
+    const rate = totalPossible > 0 ? Math.round((totalTransactions / totalPossible) * 1000) / 10 : 0;
+    const coverage = totalEnrolment > 0 ? Math.round((uniqueStudentsRecorded / totalEnrolment) * 1000) / 10 : 0;
+
+    expect(Number.isNaN(rate)).toBe(false);
+    expect(Number.isFinite(rate)).toBe(true);
+    expect(rate).toBe(0);
+
+    expect(Number.isNaN(coverage)).toBe(false);
+    expect(Number.isFinite(coverage)).toBe(true);
+    expect(coverage).toBe(0);
+  });
+
+  it('20. Mengira peratusan 100% apabila semua 95 murid hadir pada semua 18 hari layak', () => {
+    const totalEnrolment = 95;
+    const eligibleSchoolDays = 18;
+    const totalTransactions = 95 * 18; // 1,710 imbasan
+    const uniqueStudentsRecorded = 95;
+
+    const rate = ((totalTransactions) / (totalEnrolment * eligibleSchoolDays)) * 100;
+    const coverage = (uniqueStudentsRecorded / totalEnrolment) * 100;
+
+    expect(rate).toBe(100);
+    expect(coverage).toBe(100);
+  });
 });

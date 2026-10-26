@@ -24,31 +24,25 @@ export interface MonthlyExportData {
   students: Student[];
   classes: ClassItem[];
   attendanceRecords: AttendanceRecord[];
+  isTrialMode?: boolean;
+  schoolDaysMap?: Map<string, any>;
 }
 
 export function exportAttendanceToExcel(data: MonthlyExportData): void {
   const wb = XLSX.utils.book_new();
-
-  // 1. LEMBARAN 1: Ringkasan Bulanan (Monthly Summary)
-  const summaryRows: any[] = [
-    ['SISTEM KEHADIRAN QR SEKOLAH - LAPORAN BULANAN'],
-    ['Nama Sekolah:', sanitizeCellValue(data.schoolName)],
-    ['Bulan / Tahun:', `${data.monthName} ${data.year}`],
-    ['Jumlah Hari Persekolahan:', data.totalSchoolDays],
-    ['Jumlah Murid Berdaftar:', data.students.length],
-    [],
-    ['BIL', 'NO. MURID', 'NAMA PENUH', 'KELAS', 'HADIR (HARI)', 'LEWAT (HARI)', 'TIDAK HADIR (HARI)', 'PERATUS KEHADIRAN (%)']
-  ];
+  const isTrial = data.isTrialMode !== false; // Lalai: true (Mod Percubaan)
+  const nowStr = new Date().toLocaleString('ms-MY', { timeZone: 'Asia/Kuala_Lumpur' });
 
   // Map student attendance
-  const studentAttendanceMap = new Map<string, { hadir: number; lewat: number; tidakHadir: number }>();
+  const studentAttendanceMap = new Map<string, { hadir: number; lewat: number; tidakHadir: number; records: AttendanceRecord[] }>();
   data.students.forEach(s => {
-    studentAttendanceMap.set(s.id, { hadir: 0, lewat: 0, tidakHadir: 0 });
+    studentAttendanceMap.set(s.id, { hadir: 0, lewat: 0, tidakHadir: 0, records: [] });
   });
 
   data.attendanceRecords.forEach(r => {
     const stat = studentAttendanceMap.get(r.studentId);
     if (stat) {
+      stat.records.push(r);
       if (r.status === 'HADIR') stat.hadir += 1;
       else if (r.status === 'LEWAT') stat.lewat += 1;
       else if (r.status === 'TIDAK_HADIR') stat.tidakHadir += 1;
@@ -58,34 +52,136 @@ export function exportAttendanceToExcel(data: MonthlyExportData): void {
   const classMap = new Map<string, string>();
   data.classes.forEach(c => classMap.set(c.id, c.name));
 
+  let totalHadirAll = 0;
+  let totalLewatAll = 0;
+  let uniqueStudentsWithRecords = 0;
+
+  studentAttendanceMap.forEach(stat => {
+    totalHadirAll += stat.hadir;
+    totalLewatAll += stat.lewat;
+    if ((stat.hadir + stat.lewat + stat.records.length) > 0) {
+      uniqueStudentsWithRecords++;
+    }
+  });
+
+  const eligibleDays = data.totalSchoolDays > 0 ? data.totalSchoolDays : 1;
+  const totalPossibleDays = data.students.length * eligibleDays;
+  const overallPercentage = totalPossibleDays > 0 
+    ? Math.min(100, Math.round(((totalHadirAll + totalLewatAll) / totalPossibleDays) * 1000) / 10) 
+    : 0;
+  const coveragePercent = data.students.length > 0 
+    ? Math.round((uniqueStudentsWithRecords / data.students.length) * 1000) / 10 
+    : 0;
+
+  // 1. LEMBARAN 1: Ringkasan Eksekutif (Executive Summary)
+  const summaryRows: any[] = [
+    ['SISTEM PENGURUSAN KEHADIRAN QR SEKOLAH - LAPORAN BULANAN'],
+    ['Nama Sekolah:', sanitizeCellValue(data.schoolName)],
+    ['Bulan / Tahun:', `${data.monthName} ${data.year}`],
+    ['Status Mod Sistem:', isTrial ? 'MOD PERCUBAAN (TRIAL MODE)' : 'OPERASI RASMI SEBENAR'],
+    ['Tarikh & Masa Jana Fail:', sanitizeCellValue(nowStr)],
+    [],
+    ['METRIK UTAMA', 'NILAI', 'CATATAN / FORMULA'],
+    ['Hari Persekolahan Layak', eligibleDays, 'Hari Isnin-Jumaat layak tolak cuti rasmi'],
+    ['Jumlah Murid Layak (Enrolmen)', data.students.length, 'Murid aktif berdaftar'],
+    ['Murid Unik Mempunyai Rekod', uniqueStudentsWithRecords, 'Murid yang telah mengimbas sekurang-kurangnya 1 kali'],
+    ['Liputan Rekod Kehadiran', `${coveragePercent}%`, 'Murid Unik Direkod ÷ Jumlah Murid Layak × 100%'],
+    ['Jumlah Transaksi Hadir', totalHadirAll + totalLewatAll, `${totalHadirAll} Hadir Tepat, ${totalLewatAll} Lewat`],
+    ['Purata Kehadiran Rasmi Sekolah', `${overallPercentage}%`, '(Hadir + Lewat) ÷ (Murid × Hari Layak) × 100%'],
+    [],
+    ['NOTA AUDIT: Mod percubaan aktif bagi tujuan penentukuran sistem sebelum operasi penuh diumumkan.']
+  ];
+
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'Ringkasan');
+
+  // 2. LEMBARAN 2: Rekod Kehadiran Murid (Student Attendance Roster)
+  const studentRows: any[] = [
+    ['SENARAI KEHADIRAN INDIVIDU MURID'],
+    ['BIL', 'NO. MURID', 'NAMA PENUH', 'KELAS', 'JANTINA', 'JAWATAN', 'STATUS REKOD', 'HADIR (HARI)', 'LEWAT (HARI)', 'TIDAK HADIR (HARI)', 'PERATUS KEHADIRAN (%)', 'STATUS AMARAN HEM']
+  ];
+
   let bil = 1;
   data.students.forEach(s => {
-    const stat = studentAttendanceMap.get(s.id) || { hadir: 0, lewat: 0, tidakHadir: 0 };
-    const eligibleDays = data.totalSchoolDays > 0 ? data.totalSchoolDays : 1;
+    const stat = studentAttendanceMap.get(s.id) || { hadir: 0, lewat: 0, tidakHadir: 0, records: [] };
+    const attended = stat.hadir + stat.lewat;
     const percentage = ((stat.hadir + stat.lewat) / eligibleDays) * 100;
     const rounded = Math.min(100, Math.round(percentage * 10) / 10);
+    const estimatedAbsent = Math.max(0, eligibleDays - attended);
+    const hasRecord = stat.records.length > 0;
+    const recordCompleteness = hasRecord ? 'Mempunyai Rekod' : 'Belum Ada Rekod';
+    const warning = estimatedAbsent >= 3 ? 'PERLU SURAT AMARAN' : 'NORMAL';
 
-    summaryRows.push([
+    studentRows.push([
       bil++,
       sanitizeCellValue(s.studentNumber || '-'),
       sanitizeCellValue(s.fullName),
       sanitizeCellValue(classMap.get(s.classId) || s.className || '-'),
+      sanitizeCellValue(s.gender || '-'),
+      sanitizeCellValue(s.role || 'Murid'),
+      sanitizeCellValue(recordCompleteness),
       stat.hadir,
       stat.lewat,
-      stat.tidakHadir,
-      `${rounded}%`
+      estimatedAbsent,
+      `${rounded}%`,
+      warning
     ]);
   });
 
-  const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
-  XLSX.utils.book_append_sheet(wb, wsSummary, 'Ringkasan Bulanan');
+  const wsStudents = XLSX.utils.aoa_to_sheet(studentRows);
+  XLSX.utils.book_append_sheet(wb, wsStudents, 'Kehadiran Murid');
 
-  // 2. LEMBARAN 2: Rekod Kehadiran Terperinci (Raw Attendance Records)
+  // 3. LEMBARAN 3: Analisis Mengikut Kelas (Class Performance Analysis)
+  const classRows: any[] = [
+    ['ANALISIS KEHADIRAN MENGIKUT KELAS'],
+    ['BIL', 'NAMA KELAS', 'TAHUN', 'ENROLMEN', 'MURID MEMPUNYAI REKOD', 'LIPUTAN KELAS (%)', 'JUMLAH TRANSAKSI HADIR', 'PURATA KEHADIRAN (%)', 'STATUS PRESTASI']
+  ];
+
+  let classBil = 1;
+  data.classes.forEach(c => {
+    const classStudents = data.students.filter(s => s.classId === c.id);
+    let classHadirLewat = 0;
+    let classUniqueRecorded = 0;
+
+    classStudents.forEach(s => {
+      const stat = studentAttendanceMap.get(s.id);
+      if (stat) {
+        classHadirLewat += (stat.hadir + stat.lewat);
+        if (stat.records.length > 0) classUniqueRecorded++;
+      }
+    });
+
+    const classPossible = classStudents.length * eligibleDays;
+    const avgPercentage = classPossible > 0 ? Math.round((classHadirLewat / classPossible) * 1000) / 10 : 0;
+    const classCoverage = classStudents.length > 0 ? Math.round((classUniqueRecorded / classStudents.length) * 1000) / 10 : 0;
+
+    let performanceLabel = 'Perlu Semakan (<85%)';
+    if (avgPercentage >= 95) performanceLabel = 'Cemerlang (>=95%)';
+    else if (avgPercentage >= 85) performanceLabel = 'Sederhana (85-94%)';
+    if (classUniqueRecorded === 0) performanceLabel = 'Belum Ada Rekod Imbasan';
+
+    classRows.push([
+      classBil++,
+      sanitizeCellValue(c.name),
+      c.yearLevel,
+      classStudents.length,
+      classUniqueRecorded,
+      `${classCoverage}%`,
+      classHadirLewat,
+      `${avgPercentage}%`,
+      performanceLabel
+    ]);
+  });
+
+  const wsClasses = XLSX.utils.aoa_to_sheet(classRows);
+  XLSX.utils.book_append_sheet(wb, wsClasses, 'Analisis Kelas');
+
+  // 4. LEMBARAN 4: Log Rekod Harian (Daily Scan Transaction Logs)
   const detailHeaders = [
     'BIL', 'TARIKH', 'SESI', 'NAMA MURID', 'NO. MURID', 'KELAS', 'STATUS', 'WAKTU IMBAS', 'SUMBER', 'CATATAN PEMBETULAN'
   ];
   const detailRows: any[] = [
-    ['SENARAI REKOD TRANSAKSI KEHADIRAN'],
+    ['LOG TRANSAKSI IMBASAN KEHADIRAN DALAM BULAN'],
     detailHeaders
   ];
 
@@ -106,69 +202,87 @@ export function exportAttendanceToExcel(data: MonthlyExportData): void {
   });
 
   const wsDetails = XLSX.utils.aoa_to_sheet(detailRows);
-  XLSX.utils.book_append_sheet(wb, wsDetails, 'Rekod Kehadiran');
+  XLSX.utils.book_append_sheet(wb, wsDetails, 'Rekod Harian');
 
-  // 3. LEMBARAN 3: Statistik Mengikut Kelas (Class Statistics)
-  const classStatsHeaders = [
-    'BIL', 'NAMA KELAS', 'TAHUN', 'JUMLAH MURID', 'PURATA KEHADIRAN (%)'
-  ];
-  const classRows: any[] = [
-    ['STATISTIK PURATA KEHADIRAN MENGIKUT KELAS'],
-    classStatsHeaders
+  // 5. LEMBARAN 5: Kalendar Sekolah (School Days Calendar Breakdown)
+  const calendarRows: any[] = [
+    ['TAKWIM HARI PERSEKOLAHAN BULAN BERKENAAN'],
+    ['BIL', 'TARIKH', 'STATUS HARI PERSEKOLAHAN', 'JENIS HARI', 'CATATAN']
   ];
 
-  let classBil = 1;
-  data.classes.forEach(c => {
-    const classStudents = data.students.filter(s => s.classId === c.id);
-    let totalHadirLewat = 0;
-    classStudents.forEach(s => {
-      const stat = studentAttendanceMap.get(s.id);
-      if (stat) totalHadirLewat += (stat.hadir + stat.lewat);
-    });
+  const daysInMonth = new Date(data.year, getMonthIndexFromName(data.monthName), 0).getDate();
+  let calBil = 1;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dayStr = String(day).padStart(2, '0');
+    const mNum = getMonthNumberFromName(data.monthName);
+    const dateStr = `${data.year}-${String(mNum).padStart(2, '0')}-${dayStr}`;
+    const custom = data.schoolDaysMap ? data.schoolDaysMap.get(dateStr) : undefined;
 
-    const totalEligible = classStudents.length * (data.totalSchoolDays > 0 ? data.totalSchoolDays : 1);
-    const avgPercentage = totalEligible > 0 ? Math.round((totalHadirLewat / totalEligible) * 1000) / 10 : 0;
+    let isSchool = false;
+    let type = 'REGULAR';
+    let notes = 'Hari Persekolahan Biasa';
 
-    classRows.push([
-      classBil++,
-      sanitizeCellValue(c.name),
-      c.yearLevel,
-      classStudents.length,
-      `${avgPercentage}%`
+    const d = new Date(data.year, mNum - 1, day);
+    const isWk = d.getDay() === 0 || d.getDay() === 6;
+
+    if (custom) {
+      isSchool = custom.isSchoolDay;
+      type = custom.dayType || 'REGULAR';
+      notes = custom.notes || (isSchool ? 'Hari Sekolah' : 'Cuti');
+    } else {
+      isSchool = !isWk;
+      type = isWk ? 'WEEKEND' : 'REGULAR';
+      notes = isWk ? 'Hujung Minggu (Sabtu/Ahad)' : 'Hari Persekolahan Biasa';
+    }
+
+    calendarRows.push([
+      calBil++,
+      dateStr,
+      isSchool ? 'HARI PERSEKOLAHAN' : 'CUTI / HUJUNG MINGGU',
+      type,
+      sanitizeCellValue(notes)
     ]);
-  });
+  }
 
-  const wsClasses = XLSX.utils.aoa_to_sheet(classRows);
-  XLSX.utils.book_append_sheet(wb, wsClasses, 'Statistik Kelas');
+  const wsCal = XLSX.utils.aoa_to_sheet(calendarRows);
+  XLSX.utils.book_append_sheet(wb, wsCal, 'Kalendar Sekolah');
 
-  // 4. LEMBARAN 4: Rekod Individu Murid (Individual breakdown template)
-  const individualRows: any[] = [
-    ['REKOD INDIVIDU MURID - FORMAT KHAS KAUNSELING / HEM'],
-    ['PANDUAN:', 'Gunakan data ini untuk tindakan susulan murid berisiko cicir atau ponteng tegar.'],
+  // 6. LEMBARAN 6: Catatan Pengiraan (Formulas & Notes)
+  const formulaRows: any[] = [
+    ['DOKUMENTASI FORMULA & PANDUAN PENGIRAAN KEHADIRAN KPM'],
     [],
-    ['BIL', 'NAMA MURID', 'KELAS', 'STATUS REKOD', 'JUMLAH KEHADIRAN PENUH', 'AMARAN PONTENG']
+    ['1. KADAR KEHADIRAN BULANAN (KPM):'],
+    ['Formula:', '(Jumlah Hari Hadir + Jumlah Hari Lewat) ÷ (Jumlah Murid Layak × Jumlah Hari Persekolahan Layak) × 100%'],
+    ['Keterangan:', 'Mengambil kira kehadiran kumulatif fizikal murid sepanjang bulan dibahagi dengan jumlah hari-murid yang boleh hadir.'],
+    [],
+    ['2. LIPUTAN REKOD KEHADIRAN (COVERAGE):'],
+    ['Formula:', 'Jumlah Murid Mempunyai Rekod ÷ Jumlah Murid Layak × 100%'],
+    ['Keterangan:', 'Mengukur tahap penerimaan dan penggunaan kad QR sekolah dalam kalangan murid.'],
+    [],
+    ['3. STATUS AMARAN PONTENG HEM:'],
+    ['Peraturan:', 'Murid yang tidak hadir 3 hari berturut-turut atau 10 hari berkala dikeluarkan Surat Peringatan Pertama mengikut pekeliling KPM.'],
+    [],
+    ['4. PENJELASAN MOD PERCUBAAN:'],
+    ['Nota:', 'Semasa sistem dalam mod percubaan, peratusan kumulatif bulanan mungkin kelihatan rendah jika imbasan baru dimulakan di penghujung bulan kerana penyebut mengira kesemua hari persekolahan lalu. Gunakan metrik Liputan Rekod untuk menilai kemajuan ujian sebenar.']
   ];
 
-  let indBil = 1;
-  data.students.forEach(s => {
-    const stat = studentAttendanceMap.get(s.id) || { hadir: 0, lewat: 0, tidakHadir: 0 };
-    const warning = stat.tidakHadir >= 3 ? 'PERLU SURAT AMARAN' : 'NORMAL';
-    individualRows.push([
-      indBil++,
-      sanitizeCellValue(s.fullName),
-      sanitizeCellValue(classMap.get(s.classId) || '-'),
-      s.active ? 'Aktif' : 'Tidak Aktif',
-      stat.hadir + stat.lewat,
-      warning
-    ]);
-  });
-
-  const wsInd = XLSX.utils.aoa_to_sheet(individualRows);
-  XLSX.utils.book_append_sheet(wb, wsInd, 'Rekod Individu');
+  const wsFormulas = XLSX.utils.aoa_to_sheet(formulaRows);
+  XLSX.utils.book_append_sheet(wb, wsFormulas, 'Catatan Pengiraan');
 
   // Muat turun fail Excel
-  const filename = `Laporan_Kehadiran_${data.schoolName.replace(/\s+/g, '_')}_${data.monthName}_${data.year}.xlsx`;
+  const modeTag = isTrial ? 'MOD_PERCUBAAN' : 'RASMI';
+  const filename = `Laporan_Bulanan_${data.schoolName.replace(/\s+/g, '_')}_${data.monthName}_${data.year}_${modeTag}.xlsx`;
   XLSX.writeFile(wb, filename);
+}
+
+function getMonthNumberFromName(mName: string): number {
+  const months = ['Januari', 'Februari', 'Mac', 'April', 'Mei', 'Jun', 'Julai', 'Ogos', 'September', 'Oktober', 'November', 'Disember'];
+  const idx = months.indexOf(mName);
+  return idx >= 0 ? idx + 1 : 10;
+}
+
+function getMonthIndexFromName(mName: string): number {
+  return getMonthNumberFromName(mName);
 }
 
 export interface DailyExportData {
