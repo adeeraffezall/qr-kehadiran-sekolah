@@ -23,7 +23,7 @@ export const StudentQRCard: React.FC<QRCardItemProps> = ({ student, plainToken }
       
       {/* Header Kad */}
       <div className="w-full border-b border-slate-300 pb-2 flex items-center justify-center space-x-1.5">
-        <img src="/logo.png" alt="Lencana SK Batandok" className="w-5 h-5 object-contain" />
+        <img src="/logo.png?v=20261026b" alt="Lencana SK Batandok" className="w-5 h-5 object-contain" />
         <span className="font-extrabold text-[12px] uppercase tracking-tight text-slate-800">
           {schoolName}
         </span>

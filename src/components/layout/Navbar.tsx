@@ -42,7 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
 
             <div className="flex items-center space-x-2">
               <img 
-                src="/logo.png" 
+                src="/logo.png?v=20261026b" 
                 alt="Lencana SK Batandok" 
                 className="w-10 h-10 object-contain drop-shadow-xs" 
               />

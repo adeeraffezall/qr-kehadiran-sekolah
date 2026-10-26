@@ -69,7 +69,7 @@ export const LoginPage: React.FC = () => {
         <div className="text-center mb-6">
           <div className="w-24 h-24 mx-auto mb-3 flex items-center justify-center">
             <img 
-              src="/logo.png" 
+              src="/logo.png?v=20261026b" 
               alt="Lencana SK Batandok Beaufort" 
               className="w-24 h-24 object-contain drop-shadow-md" 
             />
