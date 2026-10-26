@@ -50,3 +50,45 @@
     box-shadow: none !important;
   }
 }
+
+/* Fullscreen Scanner & Laser Animation */
+#reader-container {
+  width: 100% !important;
+  height: 100% !important;
+  position: absolute !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: black !important;
+}
+
+#reader-container video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+#reader-container__scan_region {
+  background: transparent !important;
+}
+
+@keyframes scanner-laser {
+  0% {
+    top: 8%;
+    opacity: 0.8;
+  }
+  50% {
+    top: 88%;
+    opacity: 1;
+  }
+  100% {
+    top: 8%;
+    opacity: 0.8;
+  }
+}
+
+.animate-scanner-laser {
+  position: absolute;
+  animation: scanner-laser 2.2s infinite ease-in-out;
+}
