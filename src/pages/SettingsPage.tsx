@@ -272,11 +272,12 @@ export const SettingsPage: React.FC = () => {
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold">
-                <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200">Cuti Kebangsaan</span>
-                <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">Cuti Sabah</span>
-                <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">Cuti Penggal KPM</span>
-                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">Cuti Tambahan KPM</span>
-                <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 border border-yellow-300">Pindaan Sekolah</span>
+                <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300">Cuti Kebangsaan</span>
+                <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-300">Cuti Sabah</span>
+                <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-300">Cuti Penggal KPM</span>
+                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">Cuti Tambahan KPM</span>
+                <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 border border-slate-300">Hujung Minggu</span>
+                <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-900 border border-yellow-300">Pindaan Sekolah</span>
               </div>
             </div>
 
@@ -319,28 +320,61 @@ export const SettingsPage: React.FC = () => {
 
                   {/* Kad Setiap Hari */}
                   {dayRows.map(day => {
-                    let badgeBg = 'bg-emerald-100 text-emerald-800 border-emerald-200';
-                    if (day.badgeColor === 'red') badgeBg = 'bg-rose-100 text-rose-800 border-rose-200';
-                    else if (day.badgeColor === 'purple') badgeBg = 'bg-purple-100 text-purple-800 border-purple-200';
-                    else if (day.badgeColor === 'blue') badgeBg = 'bg-blue-100 text-blue-800 border-blue-200';
-                    else if (day.badgeColor === 'orange') badgeBg = 'bg-amber-100 text-amber-800 border-amber-200';
-                    else if (day.badgeColor === 'yellow') badgeBg = 'bg-yellow-100 text-yellow-800 border-yellow-300';
-                    else if (day.badgeColor === 'gray') badgeBg = 'bg-slate-100 text-slate-700 border-slate-200';
+                    // Pewarnaan Penuh Petak Mengikut Kategori Cuti
+                    let cardBg = 'bg-white border-slate-200 hover:border-blue-400 hover:shadow-xs';
+                    let badgeBg = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+                    let dayNumColor = 'text-slate-900';
+                    let noteColor = 'text-slate-600 font-normal';
+
+                    if (!day.isSchoolDay) {
+                      if (day.badgeColor === 'red') {
+                        cardBg = 'bg-rose-50 border-rose-300 hover:border-rose-400 hover:shadow-xs';
+                        badgeBg = 'bg-rose-500 text-white border-rose-600 shadow-xs';
+                        dayNumColor = 'text-rose-950 font-black';
+                        noteColor = 'text-rose-900 font-semibold';
+                      } else if (day.badgeColor === 'purple') {
+                        cardBg = 'bg-purple-50 border-purple-300 hover:border-purple-400 hover:shadow-xs';
+                        badgeBg = 'bg-purple-600 text-white border-purple-700 shadow-xs';
+                        dayNumColor = 'text-purple-950 font-black';
+                        noteColor = 'text-purple-900 font-semibold';
+                      } else if (day.badgeColor === 'blue') {
+                        cardBg = 'bg-sky-50 border-sky-300 hover:border-sky-400 hover:shadow-xs';
+                        badgeBg = 'bg-sky-600 text-white border-sky-700 shadow-xs';
+                        dayNumColor = 'text-sky-950 font-black';
+                        noteColor = 'text-sky-900 font-semibold';
+                      } else if (day.badgeColor === 'orange') {
+                        cardBg = 'bg-amber-50 border-amber-300 hover:border-amber-400 hover:shadow-xs';
+                        badgeBg = 'bg-amber-500 text-white border-amber-600 shadow-xs';
+                        dayNumColor = 'text-amber-950 font-black';
+                        noteColor = 'text-amber-900 font-semibold';
+                      } else if (day.badgeColor === 'yellow') {
+                        cardBg = 'bg-yellow-50 border-yellow-300 hover:border-yellow-400 hover:shadow-xs';
+                        badgeBg = 'bg-yellow-400 text-yellow-950 border-yellow-500 shadow-xs';
+                        dayNumColor = 'text-yellow-950 font-black';
+                        noteColor = 'text-yellow-900 font-semibold';
+                      } else {
+                        cardBg = 'bg-slate-100/85 border-slate-200/90 hover:border-slate-300';
+                        badgeBg = 'bg-slate-200 text-slate-700 border-slate-300';
+                        dayNumColor = 'text-slate-600 font-bold';
+                        noteColor = 'text-slate-500';
+                      }
+                    } else if (day.isManualOverride) {
+                      cardBg = 'bg-emerald-50 border-emerald-300 hover:border-emerald-400 hover:shadow-xs';
+                      badgeBg = 'bg-emerald-600 text-white border-emerald-700 shadow-xs';
+                      dayNumColor = 'text-emerald-950 font-black';
+                      noteColor = 'text-emerald-900 font-semibold';
+                    }
 
                     return (
                       <div
                         key={day.dateStr}
                         onClick={() => isAdmin && handleOpenDayModal(day.dateStr)}
-                        className={`p-2.5 rounded-xl border text-center transition-all ${
-                          isAdmin ? 'cursor-pointer hover:shadow-xs hover:border-blue-400' : ''
-                        } ${
-                          day.isSchoolDay
-                            ? 'bg-white border-slate-200'
-                            : 'bg-slate-50/90 border-slate-200'
+                        className={`p-2.5 rounded-xl border text-center transition-all ${cardBg} ${
+                          isAdmin ? 'cursor-pointer' : ''
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-black text-sm text-slate-900">{day.dayNumber}</span>
+                          <span className={`text-sm ${dayNumColor}`}>{day.dayNumber}</span>
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">
                             {day.dayNameBM}
                           </span>
@@ -353,7 +387,7 @@ export const SettingsPage: React.FC = () => {
                         <span className={`inline-block px-1.5 py-0.5 rounded-md text-[10px] font-bold mt-1 border ${badgeBg}`}>
                           {day.isSchoolDay ? 'Sekolah' : 'Cuti'}
                         </span>
-                        <p className="text-[10px] text-slate-600 font-medium mt-1 truncate" title={day.notes}>
+                        <p className={`text-[10px] mt-1 truncate ${noteColor}`} title={day.notes}>
                           {day.notes}
                         </p>
                       </div>
