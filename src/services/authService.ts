@@ -56,7 +56,7 @@ export async function loginUser(email: string, pass: string): Promise<User | Use
       const demoUsers = mockStore.getUsers();
       const matched = demoUsers.find(u => u.email.toLowerCase() === cleanEmail.toLowerCase());
       // Wajib padankan kata laluan rasmi walaupun luar talian
-      if (matched && pass === 'Batandok2026!') {
+      if (matched && (pass === 'Betandok2026!' || pass === 'Batandok2026!')) {
         if (!matched.active) {
           throw new Error('Akaun ini telah dinyahaktifkan oleh pihak pentadbir sekolah.');
         }
