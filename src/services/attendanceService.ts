@@ -102,7 +102,7 @@ export async function recordStudentAttendance(
   }
 
   const lateThreshold = sessionInfo.lateAfter || (sessionType === 'PAGI' ? '07:30' : '13:00');
-  let status: AttendanceStatus = 'HADIR';
+  let status: AttendanceStatus = sessionType === 'PULANG' ? 'PULANG' : 'HADIR';
   if (sessionType === 'PAGI' && currentTime > lateThreshold) {
     status = 'LEWAT';
   }
@@ -115,17 +115,20 @@ export async function recordStudentAttendance(
   const duplicate = existingRecords.find(r => r.studentId === student.id || r.id === recordId);
 
   if (duplicate) {
+    const isPulang = sessionType === 'PULANG';
     return {
       success: false,
       duplicate: true,
       code: 'ALREADY_RECORDED',
-      message: `Kehadiran bagi ${student.fullName} (${className}) telah direkodkan sebelum ini.`,
+      message: isPulang
+        ? `Rekod kepulangan bagi ${student.fullName} (${className}) telah direkodkan sebelum ini.`
+        : `Kehadiran bagi ${student.fullName} (${className}) telah direkodkan sebelum ini.`,
       student: {
         fullName: student.fullName,
         studentNumber: student.studentNumber || '',
         className
       },
-      status: duplicate.status,
+      status: isPulang ? 'PULANG' : duplicate.status,
       date: dateStr,
       session: sessionType
     };
@@ -157,10 +160,14 @@ export async function recordStudentAttendance(
 
   mockStore.addAttendance(newRecord);
 
+  const successMsg = sessionType === 'PULANG'
+    ? 'Rekod PULANG berjaya direkodkan.'
+    : (status === 'LEWAT' ? 'Kehadiran LEWAT berjaya direkodkan.' : 'Kehadiran HADIR berjaya direkodkan.');
+
   return {
     success: true,
     duplicate: false,
-    message: status === 'LEWAT' ? 'Kehadiran LEWAT berjaya direkodkan.' : 'Kehadiran HADIR berjaya direkodkan.',
+    message: successMsg,
     student: {
       id: student.id,
       fullName: student.fullName,

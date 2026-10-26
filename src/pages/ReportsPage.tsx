@@ -691,33 +691,59 @@ export const ReportsPage: React.FC = () => {
               >
                 Semua
               </button>
-              <button
-                type="button"
-                onClick={() => setDailyStatusFilter('HADIR')}
-                className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                  dailyStatusFilter === 'HADIR' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                }`}
-              >
-                Hadir Tepat
-              </button>
-              <button
-                type="button"
-                onClick={() => setDailyStatusFilter('LEWAT')}
-                className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                  dailyStatusFilter === 'LEWAT' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-                }`}
-              >
-                Lewat
-              </button>
-              <button
-                type="button"
-                onClick={() => setDailyStatusFilter('TIDAK_HADIR')}
-                className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                  dailyStatusFilter === 'TIDAK_HADIR' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
-                }`}
-              >
-                Belum / Tidak Hadir
-              </button>
+
+              {dailySession === 'PULANG' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setDailyStatusFilter('HADIR')}
+                    className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                      dailyStatusFilter === 'HADIR' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                    }`}
+                  >
+                    Telah Pulang
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDailyStatusFilter('TIDAK_HADIR')}
+                    className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                      dailyStatusFilter === 'TIDAK_HADIR' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                    }`}
+                  >
+                    Belum Pulang
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setDailyStatusFilter('HADIR')}
+                    className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                      dailyStatusFilter === 'HADIR' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    }`}
+                  >
+                    Hadir Tepat
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDailyStatusFilter('LEWAT')}
+                    className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                      dailyStatusFilter === 'LEWAT' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                    }`}
+                  >
+                    Lewat
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDailyStatusFilter('TIDAK_HADIR')}
+                    className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                      dailyStatusFilter === 'TIDAK_HADIR' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                    }`}
+                  >
+                    Belum / Tidak Hadir
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -861,14 +887,25 @@ export const ReportsPage: React.FC = () => {
                       const isPresent = recs.length > 0;
                       const isLate = recs.some(r => r.status === 'LEWAT');
 
+                      const isPulang = dailySession === 'PULANG' || primaryRec?.session === 'PULANG';
+
                       let badge = (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-rose-100 text-rose-800 border border-rose-200">
                           <XCircle className="w-3 h-3" />
-                          Tidak Hadir
+                          {isPulang ? 'Belum Pulang' : 'Tidak Hadir'}
                         </span>
                       );
 
-                      if (isLate) {
+                      if (isPulang) {
+                        if (isPresent) {
+                          badge = (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-indigo-100 text-indigo-800 border border-indigo-200">
+                              <CheckCircle2 className="w-3 h-3" />
+                              PULANG
+                            </span>
+                          );
+                        }
+                      } else if (isLate) {
                         badge = (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-amber-100 text-amber-800 border border-amber-200">
                             <Clock className="w-3 h-3" />

@@ -29,7 +29,7 @@ interface MockAttendanceRecord {
   classNameSnapshot: string;
   date: string;
   session: 'PAGI' | 'PULANG';
-  status: 'HADIR' | 'LEWAT' | 'TIDAK_HADIR';
+  status: 'HADIR' | 'LEWAT' | 'TIDAK_HADIR' | 'PULANG';
   correctionReason?: string;
 }
 
@@ -85,7 +85,7 @@ class AttendanceBackendSimulator {
 
     // 9. Late threshold calculation
     const lateThreshold = session?.lateAfter || '07:30';
-    let status: 'HADIR' | 'LEWAT' = 'HADIR';
+    let status: 'HADIR' | 'LEWAT' | 'PULANG' = sessionType === 'PULANG' ? 'PULANG' : 'HADIR';
     if (sessionType === 'PAGI' && currentTime > lateThreshold) {
       status = 'LEWAT';
     }
@@ -117,7 +117,7 @@ class AttendanceBackendSimulator {
 
   correctAttendance(
     recordId: string,
-    newStatus: 'HADIR' | 'LEWAT' | 'TIDAK_HADIR',
+    newStatus: 'HADIR' | 'LEWAT' | 'TIDAK_HADIR' | 'PULANG',
     reason: string,
     callerRole: string
   ) {
@@ -303,5 +303,17 @@ describe('Ujian Logik Kehadiran & Keselamatan Imbasan (Tests 1-7, 10, 18)', () =
     expect(successCount).toBe(1);
     expect(duplicateCount).toBe(4);
     expect(backend.attendance.size).toBe(1);
+  });
+
+  // 19. Sesi PULANG status test
+  it('19. Semakan kehadiran bagi sesi PULANG ditandakan sebagai PULANG dan bukan HADIR', () => {
+    const pulangResult = backend.recordAttendance(validToken, 'PULANG', '13:30', currentDate, 'TEACHER');
+    expect(pulangResult.success).toBe(true);
+    expect(pulangResult.record?.session).toBe('PULANG');
+    expect(pulangResult.record?.status).toBe('PULANG');
+
+    const recordId = `STD001_${currentDate}_PULANG`;
+    const stored = backend.attendance.get(recordId);
+    expect(stored?.status).toBe('PULANG');
   });
 });

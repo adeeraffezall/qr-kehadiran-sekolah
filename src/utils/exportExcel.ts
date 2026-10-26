@@ -212,9 +212,16 @@ export function exportDailyReportToExcel(data: DailyExportData): void {
   data.students.forEach(s => {
     const records = attendanceByStudent.get(s.id) || [];
     const primaryRecord = records[0];
-    const status = primaryRecord ? primaryRecord.status : 'TIDAK_HADIR';
+    const isPulang = data.sessionFilter === 'PULANG' || primaryRecord?.session === 'PULANG';
+
+    let status = 'TIDAK_HADIR';
+    if (primaryRecord) {
+      status = isPulang ? 'PULANG' : primaryRecord.status;
+    } else if (isPulang) {
+      status = 'BELUM_PULANG';
+    }
     
-    if (status === 'HADIR') hadirCount++;
+    if (status === 'HADIR' || status === 'PULANG') hadirCount++;
     else if (status === 'LEWAT') lewatCount++;
     else tidakHadirCount++;
 
@@ -226,7 +233,7 @@ export function exportDailyReportToExcel(data: DailyExportData): void {
       sanitizeCellValue(s.gender || '-'),
       sanitizeCellValue(status),
       sanitizeCellValue(primaryRecord ? formatDisplayTime(primaryRecord.scannedAt) : '-'),
-      sanitizeCellValue(primaryRecord ? primaryRecord.session : '-'),
+      sanitizeCellValue(primaryRecord ? primaryRecord.session : (isPulang ? 'PULANG' : '-')),
       sanitizeCellValue(primaryRecord ? primaryRecord.source : '-'),
       sanitizeCellValue(primaryRecord?.correctionReason || '-')
     ]);

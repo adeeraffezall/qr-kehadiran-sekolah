@@ -11,7 +11,7 @@ export interface UserProfile {
 }
 
 export type SessionType = 'PAGI' | 'PULANG';
-export type AttendanceStatus = 'HADIR' | 'LEWAT' | 'TIDAK_HADIR' | 'TIADA_STATUS';
+export type AttendanceStatus = 'HADIR' | 'LEWAT' | 'TIDAK_HADIR' | 'PULANG' | 'BELUM_PULANG' | 'TIADA_STATUS';
 
 export interface AttendanceRecord {
   id: string; // ${studentId}_${date}_${session}

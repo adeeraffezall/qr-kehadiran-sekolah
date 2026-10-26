@@ -211,12 +211,25 @@ export const AttendancePage: React.FC = () => {
           <span className="text-slate-500">
             Jumlah Murid: <strong className="text-slate-800">{filteredStudents.length}</strong>
           </span>
-          <span className="text-emerald-600">
-            Hadir/Lewat: <strong className="font-bold">{records.length}</strong>
-          </span>
-          <span className="text-rose-600">
-            Belum Rekod: <strong className="font-bold">{Math.max(0, filteredStudents.length - records.length)}</strong>
-          </span>
+          {selectedSession === 'PULANG' ? (
+            <>
+              <span className="text-indigo-700">
+                Telah Pulang: <strong className="font-bold">{records.length}</strong>
+              </span>
+              <span className="text-slate-500">
+                Belum Pulang: <strong className="font-bold">{Math.max(0, filteredStudents.length - records.length)}</strong>
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="text-emerald-600">
+                Hadir/Lewat: <strong className="font-bold">{records.length}</strong>
+              </span>
+              <span className="text-rose-600">
+                Belum Rekod: <strong className="font-bold">{Math.max(0, filteredStudents.length - records.length)}</strong>
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -235,7 +248,9 @@ export const AttendancePage: React.FC = () => {
                   <th className="py-3 px-4">Nama Penuh Murid</th>
                   <th className="py-3 px-4">No. Murid</th>
                   <th className="py-3 px-4">Kelas</th>
-                  <th className="py-3 px-4">Status Kehadiran</th>
+                  <th className="py-3 px-4">
+                    {selectedSession === 'PULANG' ? 'Status Kepulangan' : 'Status Kehadiran'}
+                  </th>
                   <th className="py-3 px-4">Waktu Imbasan</th>
                   <th className="py-3 px-4">Catatan / Pembetulan</th>
                   {isAdmin && <th className="py-3 px-4 text-right">Tindakan</th>}
@@ -252,6 +267,14 @@ export const AttendancePage: React.FC = () => {
                   filteredStudents.map((s, idx) => {
                     const record = attendanceMap.get(s.id);
                     const isRecorded = !!record;
+                    const isPulangSession = selectedSession === 'PULANG' || record?.session === 'PULANG';
+
+                    let badgeStatus: string;
+                    if (isRecorded) {
+                      badgeStatus = isPulangSession ? 'PULANG' : record.status;
+                    } else {
+                      badgeStatus = isPulangSession ? 'BELUM_PULANG' : 'BELUM_REKOD';
+                    }
 
                     return (
                       <tr key={s.id} className="hover:bg-slate-50 transition-colors">
@@ -264,11 +287,7 @@ export const AttendancePage: React.FC = () => {
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          {isRecorded ? (
-                            <Badge status={record.status} />
-                          ) : (
-                            <Badge status="BELUM_REKOD" />
-                          )}
+                          <Badge status={badgeStatus} />
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-600">
                           {isRecorded ? formatDisplayTime(record.scannedAt) : '-'}

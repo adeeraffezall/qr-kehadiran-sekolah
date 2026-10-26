@@ -29,6 +29,20 @@ export const Badge: React.FC<BadgeProps> = ({ status, className = '' }) => {
           TIDAK HADIR
         </span>
       );
+    case 'PULANG':
+      return (
+        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 ${className}`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mr-1.5" />
+          PULANG
+        </span>
+      );
+    case 'BELUM_PULANG':
+      return (
+        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200 ${className}`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5" />
+          BELUM PULANG
+        </span>
+      );
     case 'TIADA_STATUS':
     case 'BELUM_REKOD':
     default:

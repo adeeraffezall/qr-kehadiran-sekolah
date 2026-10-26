@@ -69,16 +69,25 @@ export const AttendanceCorrectionModal: React.FC<AttendanceCorrectionModalProps>
 
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1">
-            Status Kehadiran Baharu <span className="text-red-500">*</span>
+            Status {record?.session === 'PULANG' ? 'Kepulangan' : 'Kehadiran'} Baharu <span className="text-red-500">*</span>
           </label>
           <select
             value={newStatus}
             onChange={(e) => setNewStatus(e.target.value as AttendanceStatus)}
             className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
           >
-            <option value="HADIR">HADIR</option>
-            <option value="LEWAT">LEWAT</option>
-            <option value="TIDAK_HADIR">TIDAK HADIR</option>
+            {record?.session === 'PULANG' ? (
+              <>
+                <option value="PULANG">PULANG</option>
+                <option value="TIDAK_HADIR">TIDAK HADIR / BATAL REKOD</option>
+              </>
+            ) : (
+              <>
+                <option value="HADIR">HADIR</option>
+                <option value="LEWAT">LEWAT</option>
+                <option value="TIDAK_HADIR">TIDAK HADIR</option>
+              </>
+            )}
           </select>
         </div>
 
