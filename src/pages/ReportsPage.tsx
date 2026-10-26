@@ -4,6 +4,7 @@ import { getAttendanceByDateRange } from '../services/attendanceService';
 import { getStudents } from '../services/studentService';
 import { getClasses } from '../services/classService';
 import { getSchoolDaysForRange, countEligibleDaysBetween } from '../services/calendarService';
+import { exportAttendanceToPowerPoint } from '../utils/exportPPTX';
 import { 
   exportAttendanceToExcel, 
   exportDailyReportToExcel, 
@@ -45,7 +46,8 @@ import {
   History,
   CheckCircle,
   HelpCircle,
-  Filter
+  Filter,
+  Presentation
 } from 'lucide-react';
 
 export type ReportType = 'HARIAN' | 'MINGGUAN' | 'BULANAN' | 'SELA_MASA';
@@ -97,6 +99,7 @@ export const ReportsPage: React.FC = () => {
 
   // F. Modal Sejarah Murid
   const [selectedStudentForHistory, setSelectedStudentForHistory] = useState<Student | null>(null);
+  const [isExportingPPTX, setIsExportingPPTX] = useState<boolean>(false);
 
   // 4. State Data
   const [loading, setLoading] = useState<boolean>(true);
@@ -450,6 +453,49 @@ export const ReportsPage: React.FC = () => {
     }
   };
 
+  // Pengendali Eksport Persembahan Slaid PowerPoint (.pptx)
+  const handleExportPPTX = async () => {
+    try {
+      setIsExportingPPTX(true);
+      
+      let periodName = getMonthNameBM(selectedMonth);
+      let periodYear = selectedYear;
+
+      if (reportType === 'HARIAN') {
+        periodName = `Harian (${formatDateShortBM(dailyDate)})`;
+        periodYear = parseYMD(dailyDate).getFullYear();
+      } else if (reportType === 'MINGGUAN') {
+        periodName = `Mingguan (${weekInfo.label})`;
+      } else if (reportType === 'SELA_MASA') {
+        periodName = `Sela Masa (${formatDateShortBM(rangeStartDate)} - ${formatDateShortBM(rangeEndDate)})`;
+      }
+
+      await exportAttendanceToPowerPoint({
+        schoolName,
+        schoolCode,
+        motto: 'BERUSAHA BERILMU JAYA',
+        monthName: periodName,
+        year: periodYear,
+        periodLabel: periodDescription,
+        isTrialMode,
+        eligibleDays: totalEligibleDays,
+        totalEnrolment: summary.activeEnrolment,
+        uniqueStudentsRecorded: summary.uniqueStudentsRecorded,
+        coveragePercentage: summary.coveragePercentage,
+        totalTransactions: summary.totalTransactions,
+        totalHadir: summary.totalHadir,
+        totalLewat: summary.totalLewat,
+        overallPercentage: summary.overallPercentage,
+        classPerformanceList
+      });
+    } catch (err) {
+      console.error('Ralat mengeksport PowerPoint:', err);
+      alert('Gagal menjana slaid PowerPoint. Sila pastikan pelayar tidak menyekat muat turun.');
+    } finally {
+      setIsExportingPPTX(false);
+    }
+  };
+
   // Navigasi Minggu
   const handleWeekShift = (offsetWeeks: number) => {
     const cur = parseYMD(weekAnchorDate);
@@ -591,6 +637,18 @@ export const ReportsPage: React.FC = () => {
             icon={<Download className="w-4 h-4" />}
           >
             Eksport Excel (.xlsx)
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportPPTX}
+            disabled={isExportingPPTX}
+            icon={isExportingPPTX ? <Loader2 className="w-4 h-4 animate-spin text-orange-600" /> : <Presentation className="w-4 h-4 text-orange-600" />}
+            className="text-orange-700 bg-orange-50 hover:bg-orange-100 border-orange-200"
+            title="Eksport Persembahan Slaid PowerPoint Rasmi (.pptx) dengan Graf Interaktif"
+          >
+            {isExportingPPTX ? 'Menjana Slaid...' : 'Slaid PowerPoint (.pptx)'}
           </Button>
         </div>
       </div>

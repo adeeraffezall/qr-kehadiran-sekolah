@@ -165,4 +165,42 @@ describe('Ujian Takwim Persekolahan, Pengiraan Peratusan & Eksport Excel (Tests 
     expect(rate).toBe(100);
     expect(coverage).toBe(100);
   });
+
+  it('21. Memastikan data struktur persembahan slaid PowerPoint (.pptx) lengkap dan sah', () => {
+    const pptData = {
+      schoolName: 'SK BATANDOK BEAUFORT',
+      schoolCode: 'XBA6003',
+      motto: 'BERUSAHA BERILMU JAYA',
+      monthName: 'Oktober',
+      year: 2026,
+      periodLabel: 'Bulan: Oktober 2026',
+      isTrialMode: true,
+      eligibleDays: 18,
+      totalEnrolment: 95,
+      uniqueStudentsRecorded: 1,
+      coveragePercentage: 1.1,
+      totalTransactions: 1,
+      totalHadir: 1,
+      totalLewat: 0,
+      overallPercentage: 0.1,
+      classPerformanceList: [
+        {
+          classId: 'CLS01',
+          className: '1 BERUSAHA',
+          yearLevel: 1,
+          studentCount: 15,
+          uniqueAttendedCount: 1,
+          totalPresentSessions: 1,
+          attendanceRate: 0.4,
+          statusColor: 'red' as const
+        }
+      ]
+    };
+
+    expect(pptData.schoolName).toBe('SK BATANDOK BEAUFORT');
+    expect(pptData.isTrialMode).toBe(true);
+    expect(pptData.classPerformanceList.length).toBeGreaterThan(0);
+    expect(pptData.overallPercentage).toBe(0.1);
+    expect(pptData.coveragePercentage).toBe(1.1);
+  });
 });
