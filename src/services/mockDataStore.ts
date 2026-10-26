@@ -376,6 +376,18 @@ export class MockDataStore {
     }
   }
 
+  deleteClass(id: string) {
+    this.data.classes = this.data.classes.filter(item => item.id !== id);
+    // Kosongkan classId murid dalam kelas ini
+    this.data.students.forEach(s => {
+      if (s.classId === id) {
+        s.classId = '';
+        s.className = 'Tiada Kelas';
+      }
+    });
+    this.save();
+  }
+
   getStudents(classId?: string, activeOnly: boolean = false): Student[] {
     let list = this.data.students;
     if (classId && classId !== 'ALL') {
@@ -416,6 +428,18 @@ export class MockDataStore {
       Object.assign(s, updates);
       this.save();
     }
+  }
+
+  deleteStudent(id: string) {
+    this.data.students = this.data.students.filter(item => item.id !== id);
+    this.save();
+  }
+
+  clearAllSampleData() {
+    this.data.classes = [];
+    this.data.students = [];
+    this.data.attendance = [];
+    this.save();
   }
 
   getSessions(): SessionInfo[] {

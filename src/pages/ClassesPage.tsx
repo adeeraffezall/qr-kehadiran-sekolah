@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { getClasses, addClass, updateClass } from '../services/classService';
+import { getClasses, addClass, updateClass, deleteClass, clearAllSchoolData } from '../services/classService';
 import { getStudents } from '../services/studentService';
 import { ClassItem, Student } from '../types';
 import { Modal } from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
-import { GraduationCap, Plus, Edit2, Users, Loader2 } from 'lucide-react';
+import { GraduationCap, Plus, Edit2, Trash2, Users, Loader2 } from 'lucide-react';
 
 export const ClassesPage: React.FC = () => {
   const { user, isAdmin } = useAuth();
@@ -84,6 +84,39 @@ export const ClassesPage: React.FC = () => {
     }
   };
 
+  const handleDeleteClass = async (c: ClassItem) => {
+    if (!user) return;
+    const studentCount = students.filter(s => s.classId === c.id).length;
+    let msg = `Adakah anda pasti mahu memadamkan kelas "${c.name}"?`;
+    if (studentCount > 0) {
+      msg += `\n\nAMARAN: Kelas ini mengandungi ${studentCount} orang murid berdaftar. Murid akan dinyahpautkan kepada status 'Tiada Kelas'.`;
+    }
+    if (!window.confirm(msg)) return;
+
+    try {
+      await deleteClass(user.uid, user.email || '', c.id, c.name);
+      await loadData();
+    } catch (err: any) {
+      alert('Ralat memadam kelas: ' + err.message);
+    }
+  };
+
+  const handleClearSampleData = async () => {
+    if (!user) return;
+    const confirmText = prompt(
+      'AMARAN: Tindakan ini akan memadamkan SEMUA kelas, murid, dan rekod kehadiran sampel untuk membolehkan SK Batandok bermula dari sifar.\n\nSila taip "PADAM" untuk mengesahkan:'
+    );
+    if (confirmText !== 'PADAM') return;
+
+    try {
+      await clearAllSchoolData(user.uid, user.email || '');
+      await loadData();
+      alert('Semua data sampel telah berjaya dikosongkan. Anda kini boleh mendaftar kelas dan murid sebenar SK Batandok!');
+    } catch (err: any) {
+      alert('Ralat: ' + err.message);
+    }
+  };
+
   const handleToggleActiveClass = async (c: ClassItem) => {
     if (!user) return;
     const confirmMsg = c.active
@@ -103,7 +136,7 @@ export const ClassesPage: React.FC = () => {
     <div className="space-y-6">
       
       {/* Header & Add Button */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900">Senarai Kelas Sekolah</h2>
           <p className="text-xs text-slate-500">
@@ -112,14 +145,27 @@ export const ClassesPage: React.FC = () => {
         </div>
 
         {isAdmin && (
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleOpenAdd}
-            icon={<Plus className="w-3.5 h-3.5" />}
-          >
-            Tambah Kelas Baharu
-          </Button>
+          <div className="flex items-center space-x-2">
+            {classes.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearSampleData}
+                icon={<Trash2 className="w-3.5 h-3.5 text-red-500" />}
+                className="text-red-600 hover:bg-red-50 border-red-200"
+              >
+                Kosongkan Data Sampel
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleOpenAdd}
+              icon={<Plus className="w-3.5 h-3.5" />}
+            >
+              Tambah Kelas Baharu
+            </Button>
+          </div>
         )}
       </div>
 
@@ -160,10 +206,17 @@ export const ClassesPage: React.FC = () => {
                       <div className="flex items-center space-x-1">
                         <button
                           onClick={() => handleOpenEdit(c)}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-slate-100"
-                          title="Edit Kelas"
+                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Edit Nama Kelas"
                         >
                           <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClass(c)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Padam Kelas Ini"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     )}

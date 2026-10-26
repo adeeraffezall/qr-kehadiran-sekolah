@@ -5,6 +5,7 @@ import {
   doc, 
   setDoc, 
   updateDoc, 
+  deleteDoc,
   serverTimestamp,
   query,
   where,
@@ -285,4 +286,31 @@ export function downloadStudentImportTemplate(): void {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Templat Import Murid');
   XLSX.writeFile(wb, 'Templat_Import_Murid_SK.xlsx');
+}
+
+export async function deleteStudent(
+  actorUid: string,
+  actorEmail: string,
+  studentId: string,
+  studentName: string
+): Promise<void> {
+  try {
+    const studentRef = doc(db, 'students', studentId);
+    await deleteDoc(studentRef);
+  } catch {
+    // Fallback
+  }
+
+  mockStore.deleteStudent(studentId);
+
+  await createAuditLog(
+    actorUid,
+    actorEmail,
+    'DELETE_STUDENT',
+    'STUDENT',
+    studentId,
+    `Padam murid: ${studentName}`,
+    null,
+    null
+  );
 }

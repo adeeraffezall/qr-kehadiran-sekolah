@@ -4,6 +4,7 @@ import {
   getStudents, 
   addStudent, 
   updateStudent, 
+  deleteStudent,
   transferStudentClass, 
   toggleStudentActive,
   ImportRow
@@ -21,6 +22,7 @@ import {
   Download, 
   Search, 
   Edit2, 
+  Trash2,
   ArrowRightLeft, 
   UserX, 
   UserCheck, 
@@ -133,6 +135,19 @@ export const StudentsPage: React.FC = () => {
       await loadData();
     } catch (err: any) {
       alert('Ralat menukar status: ' + err.message);
+    }
+  };
+
+  // Handle Delete Student
+  const handleDeleteStudent = async (student: Student) => {
+    if (!user) return;
+    if (!window.confirm(`Adakah anda pasti mahu memadamkan murid "${student.fullName}" secara kekal? Tindakan ini tidak boleh dibatalkan.`)) return;
+
+    try {
+      await deleteStudent(user.uid, user.email || '', student.id, student.fullName);
+      await loadData();
+    } catch (err: any) {
+      alert('Ralat memadam murid: ' + err.message);
     }
   };
 
@@ -353,12 +368,20 @@ export const StudentsPage: React.FC = () => {
                               onClick={() => handleToggleActive(s)}
                               className={`p-1.5 rounded-lg transition-colors ${
                                 s.active 
-                                  ? 'text-slate-500 hover:text-red-600 hover:bg-red-50' 
+                                  ? 'text-slate-500 hover:text-amber-600 hover:bg-amber-50' 
                                   : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'
                               }`}
                               title={s.active ? 'Nyahaktifkan Murid' : 'Aktifkan Semula'}
                             >
                               {s.active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                            </button>
+
+                            <button
+                              onClick={() => handleDeleteStudent(s)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Padam Murid Secara Kekal"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </td>

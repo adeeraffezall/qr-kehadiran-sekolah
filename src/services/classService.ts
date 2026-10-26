@@ -4,6 +4,7 @@ import {
   doc, 
   setDoc, 
   updateDoc, 
+  deleteDoc,
   serverTimestamp,
   query,
   orderBy
@@ -96,5 +97,50 @@ export async function updateClass(
     'Kemaskini maklumat kelas',
     null,
     data
+  );
+}
+
+export async function deleteClass(
+  actorUid: string,
+  actorEmail: string,
+  classId: string,
+  className: string
+): Promise<void> {
+  try {
+    const classRef = doc(db, 'classes', classId);
+    await deleteDoc(classRef);
+  } catch {
+    // Fallback
+  }
+
+  mockStore.deleteClass(classId);
+
+  await createAuditLog(
+    actorUid,
+    actorEmail,
+    'DELETE_CLASS',
+    'CLASS',
+    classId,
+    `Padam kelas: ${className}`,
+    null,
+    null
+  );
+}
+
+export async function clearAllSchoolData(
+  actorUid: string,
+  actorEmail: string
+): Promise<void> {
+  mockStore.clearAllSampleData();
+
+  await createAuditLog(
+    actorUid,
+    actorEmail,
+    'CLEAR_SAMPLE_DATA',
+    'SETTINGS',
+    'ALL',
+    'Kosongkan semua data sampel untuk permulaan data sebenar SK Batandok',
+    null,
+    null
   );
 }
