@@ -36,15 +36,22 @@ export async function getSchoolDaysForMonth(year: number, month: number): Promis
   const startDate = `${year}-${monthStr}-01`;
   const endDate = `${year}-${monthStr}-31`;
 
-  const colRef = collection(db, 'schoolDays');
-  const q = query(colRef, where('date', '>=', startDate), where('date', '<=', endDate));
-  const snap = await getDocs(q);
+  return getSchoolDaysForRange(startDate, endDate);
+}
 
+export async function getSchoolDaysForRange(startDate: string, endDate: string): Promise<Map<string, SchoolDay>> {
   const map = new Map<string, SchoolDay>();
-  snap.docs.forEach(d => {
-    map.set(d.id, d.data() as SchoolDay);
-  });
+  try {
+    const colRef = collection(db, 'schoolDays');
+    const q = query(colRef, where('date', '>=', startDate), where('date', '<=', endDate));
+    const snap = await getDocs(q);
 
+    snap.docs.forEach(d => {
+      map.set(d.id, d.data() as SchoolDay);
+    });
+  } catch (err) {
+    console.warn('Error fetching school days range:', err);
+  }
   return map;
 }
 
@@ -108,6 +115,47 @@ export function countEligibleSchoolDays(
       // Default: bukan hujung minggu = hari sekolah
       if (!isWeekend(dateStr)) count++;
     }
+  }
+
+  return count;
+}
+
+/**
+ * Kira jumlah hari persekolahan yang layak bagi mana-mana julat tarikh
+ */
+export function countEligibleDaysBetween(
+  startDate: string,
+  endDate: string,
+  customDaysMap?: Map<string, SchoolDay>,
+  upToDateStr?: string
+): number {
+  if (!startDate || !endDate || startDate > endDate) return 0;
+  
+  let count = 0;
+  const [startY, startM, startD] = startDate.split('-').map(Number);
+  const [endY, endM, endD] = endDate.split('-').map(Number);
+  
+  const cur = new Date(startY, startM - 1, startD, 12, 0, 0);
+  const end = new Date(endY, endM - 1, endD, 12, 0, 0);
+
+  while (cur <= end) {
+    const y = cur.getFullYear();
+    const m = String(cur.getMonth() + 1).padStart(2, '0');
+    const d = String(cur.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
+
+    if (upToDateStr && dateStr > upToDateStr) {
+      break;
+    }
+
+    const custom = customDaysMap ? customDaysMap.get(dateStr) : undefined;
+    if (custom) {
+      if (custom.isSchoolDay) count++;
+    } else {
+      if (!isWeekend(dateStr)) count++;
+    }
+
+    cur.setDate(cur.getDate() + 1);
   }
 
   return count;

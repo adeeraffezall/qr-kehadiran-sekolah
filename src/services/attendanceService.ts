@@ -311,6 +311,20 @@ export async function getAttendanceByDateAndSession(
   return mockStore.getAttendance(dateStr, sessionType);
 }
 
+export async function getAttendanceByDateRange(startDate: string, endDate: string): Promise<AttendanceRecord[]> {
+  try {
+    const attendanceRef = collection(db, 'attendance');
+    const q = query(attendanceRef, where('date', '>=', startDate), where('date', '<=', endDate));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
+    }
+  } catch (err) {
+    console.warn('Firestore attendance range query error:', err);
+  }
+  return mockStore.getAttendanceByDateRange(startDate, endDate);
+}
+
 export async function getMonthlyAttendance(year: number, month: number): Promise<AttendanceRecord[]> {
   try {
     const monthStr = String(month).padStart(2, '0');

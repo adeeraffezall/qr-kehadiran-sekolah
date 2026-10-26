@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { countEligibleSchoolDays } from '../src/services/calendarService';
+import { countEligibleSchoolDays, countEligibleDaysBetween } from '../src/services/calendarService';
 import { sanitizeCellValue } from '../src/utils/exportExcel';
+import { getWeekDays, getDaysInDateRange } from '../src/utils/dateUtils';
 import { SchoolDay } from '../src/types';
 
 describe('Ujian Takwim Persekolahan, Pengiraan Peratusan & Eksport Excel (Tests 12, 13, 14, 15)', () => {
@@ -73,5 +74,38 @@ describe('Ujian Takwim Persekolahan, Pengiraan Peratusan & Eksport Excel (Tests 
     expect(sanitizeCellValue('AHMAD BIN ABDULLAH')).toBe('AHMAD BIN ABDULLAH');
     expect(sanitizeCellValue('1 ARIF')).toBe('1 ARIF');
     expect(sanitizeCellValue(95.5)).toBe(95.5);
+  });
+
+  // 16. Multi-period Reporting support (Harian, Mingguan, Bulanan, Sela Masa)
+  it('16. Mengira hari persekolahan layak bagi sela masa tarikh tersuai', () => {
+    // 2026-10-19 (Isnin) hingga 2026-10-25 (Ahad) = 7 hari (5 hari sekolah Isnin-Jumaat, 2 hari hujung minggu)
+    const days = countEligibleDaysBetween('2026-10-19', '2026-10-25');
+    expect(days).toBe(5);
+
+    // Mengambil kira cuti khas dalam sela masa
+    const customMap = new Map<string, SchoolDay>();
+    customMap.set('2026-10-21', {
+      date: '2026-10-21',
+      isSchoolDay: false,
+      dayType: 'HOLIDAY',
+      notes: 'Cuti Deepavali'
+    });
+
+    const daysWithHoliday = countEligibleDaysBetween('2026-10-19', '2026-10-25', customMap);
+    expect(daysWithHoliday).toBe(4);
+  });
+
+  it('17. Menjana struktur minggu Isnin-Jumaat yang tepat mengikut takwim persekolahan', () => {
+    // 2026-10-26 adalah hari Isnin
+    const week = getWeekDays('2026-10-26');
+    expect(week.startDate).toBe('2026-10-26');
+    expect(week.endDate).toBe('2026-10-30');
+    expect(week.days.length).toBe(5);
+    expect(week.days[0].dayName).toBe('Isnin');
+    expect(week.days[4].dayName).toBe('Jumaat');
+
+    // Menjana semua tarikh dalam sela masa
+    const rangeList = getDaysInDateRange('2026-10-20', '2026-10-23');
+    expect(rangeList).toEqual(['2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23']);
   });
 });

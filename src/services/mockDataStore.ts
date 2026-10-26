@@ -1749,6 +1749,10 @@ export class MockDataStore {
     return this.data.attendance.filter(r => r.date.startsWith(prefix));
   }
 
+  getAttendanceByDateRange(startDate: string, endDate: string): AttendanceRecord[] {
+    return this.data.attendance.filter(r => r.date >= startDate && r.date <= endDate);
+  }
+
   addAttendance(record: AttendanceRecord) {
     const existing = this.data.attendance.find(r => r.id === record.id);
     if (!existing) {
