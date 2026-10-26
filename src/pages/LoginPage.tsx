@@ -17,8 +17,14 @@ export const LoginPage: React.FC = () => {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
 
-  const { login, loginDemo } = useAuth();
+  const { user, login, loginDemo } = useAuth();
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (user) {
+      navigate('/', { replace: true });
+    }
+  }, [user, navigate]);
 
   const schoolName = import.meta.env.VITE_SCHOOL_NAME || 'SK BATANDOK BEAUFORT';
   const schoolCode = import.meta.env.VITE_SCHOOL_CODE || 'XBA6003';

@@ -1,7 +1,7 @@
 import { AttendanceRecord, AuditLog, ClassItem, SchoolDay, SessionInfo, Student, UserProfile } from '../types';
 import { getTodayMalaysianDate, getMalaysianCurrentTime } from '../utils/dateUtils';
 
-const STORAGE_KEY = 'SKB_APP_DATABASE_V1';
+const STORAGE_KEY = 'SKB_APP_DATABASE_V2';
 
 export interface LocalDatabaseSchema {
   users: UserProfile[];
@@ -306,7 +306,7 @@ function getInitialSeed(): LocalDatabaseSchema {
     sessions,
     schoolDays: [],
     auditLogs,
-    currentUser: users[0] // Lalai log masuk sebagai Admin untuk kemudahan demo
+    currentUser: null // Wajib log masuk melalui halaman /login
   };
 }
 
