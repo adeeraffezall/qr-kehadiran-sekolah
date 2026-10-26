@@ -63,13 +63,13 @@ export const StudentQRCard: React.FC<QRCardItemProps> = ({ student, plainToken }
               </div>
             )}
           </div>
-          <span className="text-[8.5px] font-mono font-bold text-slate-500 mt-1 tracking-wider uppercase">
-            Imbas Untuk Kehadiran
+          <span className="text-[9.5px] font-black text-blue-950 mt-1.5 tracking-wider uppercase">
+            &ldquo;BERUSAHA BERILMU JAYA&rdquo;
           </span>
         </div>
 
         {/* Student Details */}
-        <div className="mb-3 px-1">
+        <div className="mb-6 px-1">
           <h4 className="font-black text-slate-900 text-xs sm:text-[13px] uppercase tracking-tight line-clamp-2 leading-tight">
             {student.fullName}
           </h4>
@@ -89,13 +89,6 @@ export const StudentQRCard: React.FC<QRCardItemProps> = ({ student, plainToken }
               </span>
             )}
           </div>
-        </div>
-
-        {/* Footer Text over Blue Wave */}
-        <div className="mt-auto pb-1">
-          <p className="text-[9px] font-black text-white tracking-widest uppercase drop-shadow-sm">
-            KAD KEHADIRAN DIGITAL MURID
-          </p>
         </div>
 
       </div>
