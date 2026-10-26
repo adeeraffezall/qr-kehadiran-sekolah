@@ -37,7 +37,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const p = await getUserProfile(currentUser.uid);
+      const p = await getUserProfile(currentUser.uid, (currentUser as any).email || undefined);
       setProfile(p);
     } catch {
       setProfile(null);
