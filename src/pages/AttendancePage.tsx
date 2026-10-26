@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { getClasses } from '../services/classService';
-import { getStudents } from '../services/studentService';
+import { getStudents, subscribeStudents } from '../services/studentService';
 import { 
   getAttendanceByDateAndSession, 
   getSessionInfo, 
@@ -48,17 +48,22 @@ export const AttendancePage: React.FC = () => {
   useEffect(() => {
     let unsubSession: () => void = () => {};
     let unsubAttendance: () => void = () => {};
+    let unsubStudents: () => void = () => {};
 
     async function loadData() {
       setLoading(true);
       try {
-        const [cList, sList] = await Promise.all([
-          getClasses(),
-          getStudents(selectedClassId === 'ALL' ? undefined : selectedClassId, true)
-        ]);
-
+        const cList = await getClasses();
         setClasses(cList);
-        setStudents(sList);
+
+        // Langgan murid secara langsung
+        unsubStudents = subscribeStudents(
+          selectedClassId === 'ALL' ? undefined : selectedClassId,
+          true,
+          (sList) => {
+            setStudents(sList);
+          }
+        );
 
         // Langgan kemas kini status sesi secara langsung (Real-Time Cloud)
         unsubSession = subscribeSessionInfo(selectedDate, selectedSession, (sInfo) => {
@@ -81,6 +86,7 @@ export const AttendancePage: React.FC = () => {
     return () => {
       unsubSession();
       unsubAttendance();
+      unsubStudents();
     };
   }, [selectedDate, selectedSession, selectedClassId]);
 

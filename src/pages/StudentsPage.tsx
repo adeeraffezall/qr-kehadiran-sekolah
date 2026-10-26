@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { 
   getStudents, 
+  subscribeStudents,
+  ensureBaselineStudentsInFirestore,
   addStudent, 
   updateStudent, 
   deleteStudent,
@@ -9,7 +11,7 @@ import {
   toggleStudentActive,
   ImportRow
 } from '../services/studentService';
-import { getClasses } from '../services/classService';
+import { getClasses, ensureBaselineClassesInFirestore } from '../services/classService';
 import { Student, ClassItem } from '../types';
 import { StudentModal } from '../components/students/StudentModal';
 import { TransferClassModal } from '../components/students/TransferClassModal';
@@ -54,34 +56,73 @@ export const StudentsPage: React.FC = () => {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
+  useEffect(() => {
+    let unsubStudents: () => void = () => {};
+    let isMounted = true;
+
+    const initData = async () => {
+      setLoading(true);
+      try {
+        // Pastikan kelas dan murid asas disegerakkan ke pangkalan data awan
+        await Promise.all([
+          ensureBaselineClassesInFirestore(),
+          ensureBaselineStudentsInFirestore()
+        ]);
+
+        const cList = await getClasses();
+        if (isMounted) setClasses(cList);
+
+        const classMap = new Map<string, string>();
+        cList.forEach(c => classMap.set(c.id, c.name));
+
+        // Langganan MASA NYATA (Realtime Listener): Segerak automatik antara laptop & telefon
+        unsubStudents = subscribeStudents(
+          classFilter === 'ALL' ? undefined : classFilter,
+          false,
+          (sList) => {
+            if (isMounted) {
+              const enriched = sList.map(s => ({
+                ...s,
+                className: classMap.get(s.classId) || s.className || 'Kelas Tidak Ditemui'
+              }));
+              setStudents(enriched);
+              setLoading(false);
+            }
+          }
+        );
+      } catch (err) {
+        console.error('Ralat senarai murid:', err);
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    initData();
+
+    return () => {
+      isMounted = false;
+      unsubStudents();
+    };
+  }, [classFilter]);
+
   const loadData = async () => {
-    setLoading(true);
+    // Fungsi bantuan sekiranya dipanggil secara manual
     try {
       const [sList, cList] = await Promise.all([
         getStudents(classFilter === 'ALL' ? undefined : classFilter, false),
         getClasses()
       ]);
-
       const classMap = new Map<string, string>();
       cList.forEach(c => classMap.set(c.id, c.name));
-
       const enriched = sList.map(s => ({
         ...s,
-        className: classMap.get(s.classId) || 'Kelas Tidak Ditemui'
+        className: classMap.get(s.classId) || s.className || 'Kelas Tidak Ditemui'
       }));
-
       setStudents(enriched);
       setClasses(cList);
-    } catch (err) {
-      console.error('Ralat senarai murid:', err);
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      console.warn('Manual loadData error:', e);
     }
   };
-
-  useEffect(() => {
-    loadData();
-  }, [classFilter]);
 
   // Handle Add / Edit Student
   const handleSaveStudent = async (data: { fullName: string; studentNumber: string; classId: string }) => {

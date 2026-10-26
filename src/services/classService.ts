@@ -4,15 +4,77 @@ import {
   doc, 
   setDoc, 
   updateDoc, 
-  deleteDoc,
-  serverTimestamp,
-  query,
-  orderBy
+  deleteDoc, 
+  serverTimestamp, 
+  query, 
+  orderBy,
+  onSnapshot,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { ClassItem } from '../types';
 import { createAuditLog } from './auditService';
 import { mockStore } from './mockDataStore';
+
+let isSyncingClasses = false;
+
+/**
+ * Pastikan 7 kelas rasmi SK Batandok Beaufort disegerakkan ke Cloud Firestore
+ */
+export async function ensureBaselineClassesInFirestore(): Promise<void> {
+  if (isSyncingClasses) return;
+  try {
+    const classesRef = collection(db, 'classes');
+    const snap = await getDocs(query(classesRef));
+    if (snap.empty) {
+      isSyncingClasses = true;
+      const initialClasses = mockStore.getClasses();
+      if (initialClasses.length > 0) {
+        const batch = writeBatch(db);
+        initialClasses.forEach(c => {
+          const docRef = doc(db, 'classes', c.id);
+          batch.set(docRef, {
+            ...c,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        });
+        await batch.commit();
+        console.log(`[Firestore] Berjaya menyegerak ${initialClasses.length} kelas rasmi ke Cloud Firestore.`);
+      }
+    }
+  } catch (err) {
+    console.warn('Gagal menyegerak kelas ke Firestore:', err);
+  } finally {
+    isSyncingClasses = false;
+  }
+}
+
+/**
+ * Langgan senarai kelas secara masa nyata (Realtime Listener - onSnapshot)
+ */
+export function subscribeClasses(callback: (classes: ClassItem[]) => void): () => void {
+  try {
+    const classesRef = collection(db, 'classes');
+    const q = query(classesRef, orderBy('yearLevel', 'asc'), orderBy('name', 'asc'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as ClassItem));
+        list.forEach(c => mockStore.addClass(c));
+        callback(list);
+      } else {
+        callback(mockStore.getClasses());
+      }
+    }, (err) => {
+      console.warn('Subscription classes error:', err.message);
+      callback(mockStore.getClasses());
+    });
+    return unsubscribe;
+  } catch (err) {
+    callback(mockStore.getClasses());
+    return () => {};
+  }
+}
 
 export async function getClasses(): Promise<ClassItem[]> {
   try {

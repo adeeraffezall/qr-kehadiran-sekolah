@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { getClasses, addClass, updateClass, deleteClass, clearAllSchoolData } from '../services/classService';
+import { 
+  getClasses, 
+  subscribeClasses, 
+  ensureBaselineClassesInFirestore, 
+  addClass, 
+  updateClass, 
+  deleteClass, 
+  clearAllSchoolData 
+} from '../services/classService';
 import { getStudents } from '../services/studentService';
 import { ClassItem, Student } from '../types';
 import { Modal } from '../components/ui/Modal';
@@ -21,8 +29,39 @@ export const ClassesPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    let unsubClasses: () => void = () => {};
+    let isMounted = true;
+
+    const init = async () => {
+      setLoading(true);
+      try {
+        await ensureBaselineClassesInFirestore();
+        const sList = await getStudents(undefined, true);
+        if (isMounted) setStudents(sList);
+
+        // Langganan Masa Nyata bagi senarai kelas
+        unsubClasses = subscribeClasses((cList) => {
+          if (isMounted) {
+            setClasses(cList);
+            setLoading(false);
+          }
+        });
+      } catch (err) {
+        console.error('Ralat senarai kelas:', err);
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    init();
+
+    return () => {
+      isMounted = false;
+      unsubClasses();
+    };
+  }, []);
+
   const loadData = async () => {
-    setLoading(true);
     try {
       const [cList, sList] = await Promise.all([
         getClasses(),
@@ -32,14 +71,8 @@ export const ClassesPage: React.FC = () => {
       setStudents(sList);
     } catch (err) {
       console.error('Ralat senarai kelas:', err);
-    } finally {
-      setLoading(false);
     }
   };
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   const handleOpenAdd = () => {
     setEditingClass(null);

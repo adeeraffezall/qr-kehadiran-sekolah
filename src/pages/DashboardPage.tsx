@@ -3,7 +3,12 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { getStudents } from '../services/studentService';
 import { getClasses } from '../services/classService';
-import { getAttendanceByDateAndSession, getSessionInfo } from '../services/attendanceService';
+import { 
+  getAttendanceByDateAndSession, 
+  getSessionInfo,
+  subscribeAttendance,
+  subscribeSessionInfo
+} from '../services/attendanceService';
 import { getTodayMalaysianDate, formatDisplayDate, formatDisplayTime } from '../utils/dateUtils';
 import { getLocalSessionConfig } from '../services/settingsService';
 import { Student, ClassItem, AttendanceRecord, SessionInfo } from '../types';
@@ -34,30 +39,51 @@ export const DashboardPage: React.FC = () => {
   const todayStr = getTodayMalaysianDate();
 
   useEffect(() => {
+    let unsubMorning: () => void = () => {};
+    let unsubDismissal: () => void = () => {};
+    let unsubSession: () => void = () => {};
+    let isMounted = true;
+
     async function loadDashboardData() {
       setLoading(true);
       try {
-        const [studList, classList, mRecords, dRecords, mSession] = await Promise.all([
+        const [studList, classList] = await Promise.all([
           getStudents('ALL', true),
-          getClasses(),
-          getAttendanceByDateAndSession(todayStr, 'PAGI'),
-          getAttendanceByDateAndSession(todayStr, 'PULANG'),
-          getSessionInfo(todayStr, 'PAGI')
+          getClasses()
         ]);
 
-        setStudents(studList);
-        setClasses(classList);
-        setMorningAttendance(mRecords);
-        setDismissalAttendance(dRecords);
-        setMorningSession(mSession);
+        if (isMounted) {
+          setStudents(studList);
+          setClasses(classList);
+        }
+
+        // Langgan kemas kini rekod kehadiran & sesi pagi secara masa nyata (Live Real-Time)
+        unsubMorning = subscribeAttendance(todayStr, 'PAGI', (recs) => {
+          if (isMounted) setMorningAttendance(recs);
+        });
+
+        unsubDismissal = subscribeAttendance(todayStr, 'PULANG', (recs) => {
+          if (isMounted) setDismissalAttendance(recs);
+        });
+
+        unsubSession = subscribeSessionInfo(todayStr, 'PAGI', (sess) => {
+          if (isMounted) setMorningSession(sess);
+        });
       } catch (err) {
         console.error('Ralat memuatkan dashboard:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
 
     loadDashboardData();
+
+    return () => {
+      isMounted = false;
+      unsubMorning();
+      unsubDismissal();
+      unsubSession();
+    };
   }, [todayStr]);
 
   if (loading) {

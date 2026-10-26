@@ -9,7 +9,9 @@ import {
   serverTimestamp,
   query,
   where,
-  orderBy
+  orderBy,
+  onSnapshot,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Student } from '../types';
@@ -17,6 +19,78 @@ import { generateRandomToken, hashTokenClient } from './qrService';
 import { createAuditLog } from './auditService';
 import { mockStore } from './mockDataStore';
 import * as XLSX from 'xlsx';
+
+let isSyncingStudents = false;
+
+/**
+ * Pastikan 95 murid rasmi SK Batandok Beaufort disegerakkan ke Cloud Firestore
+ */
+export async function ensureBaselineStudentsInFirestore(): Promise<void> {
+  if (isSyncingStudents) return;
+  try {
+    const studentsRef = collection(db, 'students');
+    const snap = await getDocs(query(studentsRef));
+    if (snap.empty) {
+      isSyncingStudents = true;
+      const initialStudents = mockStore.getStudents(undefined, false);
+      if (initialStudents.length > 0) {
+        const batch = writeBatch(db);
+        initialStudents.forEach(s => {
+          const docRef = doc(db, 'students', s.id);
+          batch.set(docRef, {
+            ...s,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        });
+        await batch.commit();
+        console.log(`[Firestore] Berjaya menyegerak ${initialStudents.length} murid rasmi ke Cloud Firestore.`);
+      }
+    }
+  } catch (err) {
+    console.warn('Gagal menyegerak murid ke Firestore:', err);
+  } finally {
+    isSyncingStudents = false;
+  }
+}
+
+/**
+ * Langgan senarai murid secara masa nyata (Realtime Listener - onSnapshot)
+ * Membolehkan semua peranti guru (laptop, telefon) melihat kemas kini serta-merta tanpa perlu refresh!
+ */
+export function subscribeStudents(
+  classIdFilter: string | undefined,
+  activeOnly: boolean,
+  callback: (students: Student[]) => void
+): () => void {
+  try {
+    const studentsRef = collection(db, 'students');
+    let q = query(studentsRef, orderBy('fullName', 'asc'));
+
+    if (classIdFilter && classIdFilter !== 'ALL') {
+      q = query(studentsRef, where('classId', '==', classIdFilter), orderBy('fullName', 'asc'));
+    }
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        let list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Student));
+        if (activeOnly) list = list.filter(s => s.active);
+        // Segerakkan ke storan setempat peranti
+        list.forEach(s => mockStore.updateStudent(s.id, s));
+        callback(list);
+      } else {
+        callback(mockStore.getStudents(classIdFilter, activeOnly));
+      }
+    }, (err) => {
+      console.warn('Subscription students error:', err.message);
+      callback(mockStore.getStudents(classIdFilter, activeOnly));
+    });
+    return unsubscribe;
+  } catch (err) {
+    callback(mockStore.getStudents(classIdFilter, activeOnly));
+    return () => {};
+  }
+}
 
 export async function getStudents(classIdFilter?: string, activeOnly: boolean = false): Promise<Student[]> {
   try {
