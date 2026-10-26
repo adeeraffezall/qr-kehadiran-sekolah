@@ -24,7 +24,7 @@ describe('Ujian Takwim Persekolahan, Pengiraan Peratusan & Eksport Excel (Tests 
     const eligibleDays = countEligibleSchoolDays(2026, 10, customMap);
     
     // 22 hari Isnin-Jumaat tolak 1 hari cuti peristiwa = 21 hari persekolahan layak
-    expect(eligibleDays).toBe(17);
+    expect(eligibleDays).toBe(21);
   });
 
   // 13. Unfinalized sessions
@@ -255,9 +255,34 @@ describe('Ujian Takwim Persekolahan, Pengiraan Peratusan & Eksport Excel (Tests 
   });
 
   // 24. Automatic Calculation for October 2026
-  it('24. Kiraan hari persekolahan layak Oktober 2026 berpandukan takwim KPM menghasilkan tepat 18 hari', () => {
-    // 31 hari Oktober: 9 hari hujung minggu, 4 hari cuti (TYT Sabah & Deepavali) = 18 hari persekolahan layak
-    const eligibleDays = countEligibleSchoolDays(2026, 10, new Map());
-    expect(eligibleDays).toBe(18);
+  it('24. Kiraan hari persekolahan layak Oktober 2026 sehingga hari ini (26 Okt) menghasilkan tepat 18 hari', () => {
+    // 1 Okt hingga 26 Okt 2026 = 18 hari persekolahan Isnin-Jumaat yang telah dilalui
+    const eligibleDaysElapsed = countEligibleSchoolDays(2026, 10, new Map(), '2026-10-26');
+    expect(eligibleDaysElapsed).toBe(18);
+
+    // Keseluruhan 31 hari Oktober 2026 = 22 hari persekolahan Isnin-Jumaat
+    const totalMonthEligible = countEligibleSchoolDays(2026, 10, new Map());
+    expect(totalMonthEligible).toBe(22);
+  });
+
+  // 25. Cuti Deepavali Rasmi pada November
+  it('25. Cuti Deepavali disegerakkan pada 8-10 November 2026 mengikut kalendar rasmi', () => {
+    const deepavaliSun = resolveSchoolDay('2026-11-08', null);
+    expect(deepavaliSun.isSchoolDay).toBe(false);
+    expect(deepavaliSun.notes).toContain('Deepavali');
+
+    const deepavaliMon = resolveSchoolDay('2026-11-09', null);
+    expect(deepavaliMon.isSchoolDay).toBe(false);
+    expect(deepavaliMon.notes).toContain('Deepavali');
+
+    // Pastikan 26 & 27 Oktober adalah Hari Persekolahan Biasa
+    const today = resolveSchoolDay('2026-10-26', null);
+    expect(today.isSchoolDay).toBe(true);
+    expect(today.notes).toBe('Hari Persekolahan Biasa');
+
+    const tomorrow = resolveSchoolDay('2026-10-27', null);
+    expect(tomorrow.isSchoolDay).toBe(true);
+    expect(tomorrow.notes).toBe('Hari Persekolahan Biasa');
+
   });
 });

@@ -82,15 +82,13 @@ const KPM_HOLIDAYS_MAP: Record<string, Omit<KPMHolidayInfo, 'date'>> = {
   '2026-09-06': { name: 'Cuti Penggal 2 Persekolahan KPM 2026/2027', category: 'KPM_TERM', categoryLabel: 'Cuti Penggal KPM', badgeColor: 'blue' },
   '2026-09-16': { name: 'Hari Malaysia (Hari Kelepasan Am Persekutuan)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
 
-  // Oktober 2026 (Menghasilkan Tepat 18 Hari Persekolahan Layak Bagi Oktober 2026)
+  // Oktober 2026 (Semua hari Isnin - Jumaat adalah Hari Persekolahan Biasa)
   '2026-10-03': { name: 'Hari Jadi Yang di-Pertua Negeri Sabah (Cuti Am Sabah)', category: 'STATE', categoryLabel: 'Cuti Negeri Sabah', badgeColor: 'purple' },
-  '2026-10-22': { name: 'Cuti Perayaan Tambahan KPM (Deepavali Kumpulan B)', category: 'KPM_FESTIVE', categoryLabel: 'Cuti Tambahan KPM', badgeColor: 'orange' },
-  '2026-10-23': { name: 'Cuti Perayaan Tambahan KPM (Deepavali Kumpulan B)', category: 'KPM_FESTIVE', categoryLabel: 'Cuti Tambahan KPM', badgeColor: 'orange' },
-  '2026-10-26': { name: 'Cuti Perayaan Tambahan KPM (Deepavali Kumpulan B)', category: 'KPM_FESTIVE', categoryLabel: 'Cuti Tambahan KPM', badgeColor: 'orange' },
-  '2026-10-27': { name: 'Hari Deepavali (Hari Kelepasan Am)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
 
-  // November 2026
-  '2026-11-08': { name: 'Hari Keputeraan Sultan / Sambutan Negeri KPM', category: 'STATE', categoryLabel: 'Cuti Khas KPM', badgeColor: 'purple' },
+  // November 2026 (Perayaan Deepavali)
+  '2026-11-08': { name: 'Hari Deepavali (Hari Kelepasan Am Persekutuan)', category: 'NATIONAL', categoryLabel: 'Cuti Umum Kebangsaan', badgeColor: 'red' },
+  '2026-11-09': { name: 'Cuti Perayaan Tambahan KPM (Deepavali Kumpulan B)', category: 'KPM_FESTIVE', categoryLabel: 'Cuti Tambahan KPM', badgeColor: 'orange' },
+  '2026-11-10': { name: 'Cuti Perayaan Tambahan KPM (Deepavali Kumpulan B)', category: 'KPM_FESTIVE', categoryLabel: 'Cuti Tambahan KPM', badgeColor: 'orange' },
 
   // Disember 2026
   '2026-12-19': { name: 'Cuti Penggal 3 Persekolahan KPM 2026/2027', category: 'KPM_TERM', categoryLabel: 'Cuti Penggal KPM', badgeColor: 'blue' },
