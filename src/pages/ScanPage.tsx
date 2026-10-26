@@ -116,7 +116,7 @@ export const ScanPage: React.FC = () => {
 
         <div className="flex flex-wrap gap-2">
           {students.slice(0, 4).map(s => {
-            const token = (s as any).plainToken || `SKRM_TOKEN_${s.fullName.replace(/\s+/g, '_')}`;
+            const token = (s as any).plainToken || `SKB_TOKEN_${s.fullName.replace(/\s+/g, '_')}`;
             return (
               <button
                 key={s.id}

@@ -8,8 +8,8 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
   const { user, profile, role, logout } = useAuth();
-  const schoolName = import.meta.env.VITE_SCHOOL_NAME || 'SK SERI MAKMUR';
-  const schoolCode = import.meta.env.VITE_SCHOOL_CODE || 'BBA1234';
+  const schoolName = import.meta.env.VITE_SCHOOL_NAME || 'SK BATANDOK BEAUFORT';
+  const schoolCode = import.meta.env.VITE_SCHOOL_CODE || 'XBA6003';
 
   const getRoleBadge = (r: string | null) => {
     switch (r) {
@@ -41,9 +41,11 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
             </button>
 
             <div className="flex items-center space-x-2">
-              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-xs">
-                <QrCode className="w-6 h-6" />
-              </div>
+              <img 
+                src="/logo.png" 
+                alt="Lencana SK Batandok" 
+                className="w-10 h-10 object-contain drop-shadow-xs" 
+              />
               <div>
                 <div className="flex items-center space-x-1.5">
                   <span className="font-bold text-slate-900 text-base sm:text-lg leading-tight">

@@ -23,7 +23,7 @@ export function generateRandomToken(): string {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/, '');
-  return `SKRM_${base64}`;
+  return `SKB_${base64}`;
 }
 
 /**

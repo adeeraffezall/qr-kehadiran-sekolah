@@ -10,7 +10,7 @@ interface QRCardItemProps {
 
 export const StudentQRCard: React.FC<QRCardItemProps> = ({ student, plainToken }) => {
   const [qrSrc, setQrSrc] = useState<string>('');
-  const schoolName = import.meta.env.VITE_SCHOOL_NAME || 'SK SERI MAKMUR';
+  const schoolName = import.meta.env.VITE_SCHOOL_NAME || 'SK BATANDOK BEAUFORT';
 
   useEffect(() => {
     if (plainToken) {
@@ -23,7 +23,7 @@ export const StudentQRCard: React.FC<QRCardItemProps> = ({ student, plainToken }
       
       {/* Header Kad */}
       <div className="w-full border-b border-slate-300 pb-2 flex items-center justify-center space-x-1.5">
-        <School className="w-4 h-4 text-blue-700" />
+        <img src="/logo.png" alt="Lencana SK Batandok" className="w-5 h-5 object-contain" />
         <span className="font-extrabold text-[12px] uppercase tracking-tight text-slate-800">
           {schoolName}
         </span>

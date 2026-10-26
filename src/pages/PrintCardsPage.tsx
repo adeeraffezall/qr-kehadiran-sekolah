@@ -65,7 +65,7 @@ export const PrintCardsPage: React.FC = () => {
       const tokenMap = new Map<string, string>();
       enriched.forEach(s => {
         // Token format mengikut ID unik murid atau token sedia ada
-        const dummyToken = `SKRM_CARD_${s.id}_${s.qrTokenHash?.substring(0, 8) || 'KEY'}`;
+        const dummyToken = `SKB_CARD_${s.id}_${s.qrTokenHash?.substring(0, 8) || 'KEY'}`;
         tokenMap.set(s.id, dummyToken);
       });
 
@@ -126,7 +126,7 @@ export const PrintCardsPage: React.FC = () => {
 
   const studentsWithTokens = filteredStudents.map(s => ({
     student: s,
-    token: studentTokenMap.get(s.id) || `SKRM_${s.id}`
+    token: studentTokenMap.get(s.id) || `SKB_${s.id}`
   }));
 
   if (printMode === 'BATCH_A4_PRINT') {
@@ -208,7 +208,7 @@ export const PrintCardsPage: React.FC = () => {
             </div>
           ) : (
             filteredStudents.map(student => {
-              const token = studentTokenMap.get(student.id) || `SKRM_${student.id}`;
+              const token = studentTokenMap.get(student.id) || `SKB_${student.id}`;
 
               return (
                 <div key={student.id} className="flex flex-col items-center bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">

@@ -34,7 +34,7 @@ export const ReportsPage: React.FC = () => {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [schoolDaysMap, setSchoolDaysMap] = useState<Map<string, SchoolDay>>(new Map());
 
-  const schoolName = import.meta.env.VITE_SCHOOL_NAME || 'SK SERI MAKMUR';
+  const schoolName = import.meta.env.VITE_SCHOOL_NAME || 'SK BATANDOK BEAUFORT';
 
   useEffect(() => {
     async function loadReport() {

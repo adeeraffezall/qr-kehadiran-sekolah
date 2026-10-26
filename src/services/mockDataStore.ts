@@ -1,7 +1,7 @@
 import { AttendanceRecord, AuditLog, ClassItem, SchoolDay, SessionInfo, Student, UserProfile } from '../types';
 import { getTodayMalaysianDate, getMalaysianCurrentTime } from '../utils/dateUtils';
 
-const STORAGE_KEY = 'SKRM_APP_DATABASE_V1';
+const STORAGE_KEY = 'SKB_APP_DATABASE_V1';
 
 export interface LocalDatabaseSchema {
   users: UserProfile[];
@@ -14,7 +14,7 @@ export interface LocalDatabaseSchema {
   currentUser: UserProfile | null;
 }
 
-// Data Permulaan Sekolah Rendah Malaysia (SK Seri Makmur)
+// Data Permulaan Sekolah Rendah Malaysia (SK Batandok Beaufort)
 function getInitialSeed(): LocalDatabaseSchema {
   const today = getTodayMalaysianDate();
   const now = new Date().toISOString();
@@ -22,8 +22,8 @@ function getInitialSeed(): LocalDatabaseSchema {
   const users: UserProfile[] = [
     {
       uid: 'USR_ADMIN_01',
-      email: 'admin@sekolah.edu.my',
-      displayName: 'En. Azlan bin Mansor (Guru Besar)',
+      email: 'admin@skbatandok.edu.my',
+      displayName: 'Guru Besar (SK Batandok)',
       role: 'ADMIN',
       active: true,
       createdAt: now,
@@ -31,8 +31,8 @@ function getInitialSeed(): LocalDatabaseSchema {
     },
     {
       uid: 'USR_TEACHER_01',
-      email: 'cikgu.sarah@sekolah.edu.my',
-      displayName: 'Pn. Sarah binti Razak (Guru Disiplin)',
+      email: 'guru@skbatandok.edu.my',
+      displayName: 'Guru Bertugas (SK Batandok)',
       role: 'TEACHER',
       active: true,
       createdAt: now,
@@ -40,8 +40,8 @@ function getInitialSeed(): LocalDatabaseSchema {
     },
     {
       uid: 'USR_STAFF_01',
-      email: 'staf.kamarul@sekolah.edu.my',
-      displayName: 'En. Kamarul Zaman (Staf Operasi)',
+      email: 'staf@skbatandok.edu.my',
+      displayName: 'Staf Operasi (SK Batandok)',
       role: 'STAFF',
       active: true,
       createdAt: now,
@@ -69,7 +69,7 @@ function getInitialSeed(): LocalDatabaseSchema {
       classId: 'CLS_1A',
       className: '1 ARIF',
       active: true,
-      plainToken: 'SKRM_TOKEN_AHMAD_DANIEL_1A',
+      plainToken: 'SKB_TOKEN_AHMAD_DANIEL_1A',
       qrTokenHash: '6d0e808d4b3a4e98f0c29f8a29a0082f4d6d84a7e44a30e8c459800045f29cfb',
       createdAt: now,
       updatedAt: now
@@ -81,7 +81,7 @@ function getInitialSeed(): LocalDatabaseSchema {
       classId: 'CLS_1A',
       className: '1 ARIF',
       active: true,
-      plainToken: 'SKRM_TOKEN_NUR_AMIRA_1A',
+      plainToken: 'SKB_TOKEN_NUR_AMIRA_1A',
       qrTokenHash: '9a84b3913f044b7f4be4752c1bbd0c2e6f4770258288544c4fae0a290d2ec80d',
       createdAt: now,
       updatedAt: now
@@ -93,7 +93,7 @@ function getInitialSeed(): LocalDatabaseSchema {
       classId: 'CLS_1B',
       className: '1 BESTARI',
       active: true,
-      plainToken: 'SKRM_TOKEN_CHONG_WEI_HONG_1B',
+      plainToken: 'SKB_TOKEN_CHONG_WEI_HONG_1B',
       qrTokenHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
       createdAt: now,
       updatedAt: now
@@ -105,7 +105,7 @@ function getInitialSeed(): LocalDatabaseSchema {
       classId: 'CLS_1B',
       className: '1 BESTARI',
       active: true,
-      plainToken: 'SKRM_TOKEN_AISYAH_KHALID_1B',
+      plainToken: 'SKB_TOKEN_AISYAH_KHALID_1B',
       qrTokenHash: '8f434346648f6b96df89dda901c5176b10e6d059612d559c41438b6009ed53ae',
       createdAt: now,
       updatedAt: now
@@ -117,7 +117,7 @@ function getInitialSeed(): LocalDatabaseSchema {
       classId: 'CLS_2C',
       className: '2 CEMERLANG',
       active: true,
-      plainToken: 'SKRM_TOKEN_KAVINDRAN_2C',
+      plainToken: 'SKB_TOKEN_KAVINDRAN_2C',
       qrTokenHash: 'b45cffe084dd3d20d928bee85e7b0f21',
       createdAt: now,
       updatedAt: now
@@ -129,7 +129,7 @@ function getInitialSeed(): LocalDatabaseSchema {
       classId: 'CLS_2C',
       className: '2 CEMERLANG',
       active: true,
-      plainToken: 'SKRM_TOKEN_AMMAR_RAYYAN_2C',
+      plainToken: 'SKB_TOKEN_AMMAR_RAYYAN_2C',
       qrTokenHash: 'a12bc44398fcd89028',
       createdAt: now,
       updatedAt: now
@@ -141,7 +141,7 @@ function getInitialSeed(): LocalDatabaseSchema {
       classId: 'CLS_3D',
       className: '3 DINAMIK',
       active: true,
-      plainToken: 'SKRM_TOKEN_DAMIA_BATRISYIA_3D',
+      plainToken: 'SKB_TOKEN_DAMIA_BATRISYIA_3D',
       qrTokenHash: 'c772d590a233b281b3',
       createdAt: now,
       updatedAt: now
@@ -153,7 +153,7 @@ function getInitialSeed(): LocalDatabaseSchema {
       classId: 'CLS_4E',
       className: '4 ELIT',
       active: true,
-      plainToken: 'SKRM_TOKEN_LIM_JIA_EN_4E',
+      plainToken: 'SKB_TOKEN_LIM_JIA_EN_4E',
       qrTokenHash: 'f420cb0938bfe490',
       createdAt: now,
       updatedAt: now
@@ -165,7 +165,7 @@ function getInitialSeed(): LocalDatabaseSchema {
       classId: 'CLS_5G',
       className: '5 GEMILANG',
       active: true,
-      plainToken: 'SKRM_TOKEN_HAZIQ_NAZRI_5G',
+      plainToken: 'SKB_TOKEN_HAZIQ_NAZRI_5G',
       qrTokenHash: '89ddaa328bb01944',
       createdAt: now,
       updatedAt: now
@@ -177,7 +177,7 @@ function getInitialSeed(): LocalDatabaseSchema {
       classId: 'CLS_6H',
       className: '6 HARMONI',
       active: true,
-      plainToken: 'SKRM_TOKEN_SARAH_ALYSSA_6H',
+      plainToken: 'SKB_TOKEN_SARAH_ALYSSA_6H',
       qrTokenHash: '344cc9021dafe003',
       createdAt: now,
       updatedAt: now
@@ -279,7 +279,7 @@ function getInitialSeed(): LocalDatabaseSchema {
     {
       id: 'LOG_INIT_01',
       actorUid: 'USR_ADMIN_01',
-      actorEmail: 'admin@sekolah.edu.my',
+      actorEmail: 'admin@skbatandok.edu.my',
       action: 'BOOTSTRAP_FIRST_ADMIN',
       entityType: 'USER',
       entityId: 'USR_ADMIN_01',
@@ -289,7 +289,7 @@ function getInitialSeed(): LocalDatabaseSchema {
     {
       id: 'LOG_INIT_02',
       actorUid: 'USR_ADMIN_01',
-      actorEmail: 'admin@sekolah.edu.my',
+      actorEmail: 'admin@skbatandok.edu.my',
       action: 'IMPORT_STUDENTS_BATCH',
       entityType: 'STUDENT',
       entityId: 'BATCH_2026',

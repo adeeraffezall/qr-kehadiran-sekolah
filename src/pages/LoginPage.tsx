@@ -20,8 +20,8 @@ export const LoginPage: React.FC = () => {
   const { login, loginDemo } = useAuth();
   const navigate = useNavigate();
 
-  const schoolName = import.meta.env.VITE_SCHOOL_NAME || 'SK SERI MAKMUR';
-  const schoolCode = import.meta.env.VITE_SCHOOL_CODE || 'BBA1234';
+  const schoolName = import.meta.env.VITE_SCHOOL_NAME || 'SK BATANDOK BEAUFORT';
+  const schoolCode = import.meta.env.VITE_SCHOOL_CODE || 'XBA6003';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,14 +65,14 @@ export const LoginPage: React.FC = () => {
 
   const handleSelectAccount = (role: 'ADMIN' | 'TEACHER' | 'STAFF') => {
     if (role === 'ADMIN') {
-      setEmail('admin@sekolah.edu.my');
-      setPassword('adminSekolah2026!');
+      setEmail('admin@skbatandok.edu.my');
+      setPassword('Batandok2026!');
     } else if (role === 'TEACHER') {
-      setEmail('guru@sekolah.edu.my');
-      setPassword('guruSekolah2026!');
+      setEmail('guru@skbatandok.edu.my');
+      setPassword('Batandok2026!');
     } else {
-      setEmail('staf@sekolah.edu.my');
-      setPassword('stafSekolah2026!');
+      setEmail('staf@skbatandok.edu.my');
+      setPassword('Batandok2026!');
     }
     setError(null);
   };
@@ -111,8 +111,12 @@ export const LoginPage: React.FC = () => {
         
         {/* School Branding Header */}
         <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center text-white mx-auto shadow-lg shadow-blue-500/20 mb-3">
-            <QrCode className="w-9 h-9" />
+          <div className="w-20 h-20 mx-auto mb-3 flex items-center justify-center">
+            <img 
+              src="/logo.png" 
+              alt="Lencana SK Batandok Beaufort" 
+              className="w-20 h-20 object-contain drop-shadow-md" 
+            />
           </div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">
             {schoolName}
@@ -136,7 +140,7 @@ export const LoginPage: React.FC = () => {
               type="button"
               onClick={() => handleSelectAccount('ADMIN')}
               className={`p-2 rounded-xl text-center border text-xs font-bold transition-all ${
-                email === 'admin@sekolah.edu.my'
+                email === 'admin@skbatandok.edu.my'
                   ? 'bg-red-600 text-white border-red-600 shadow-xs'
                   : 'bg-red-50 text-red-800 border-red-200 hover:bg-red-100'
               }`}
@@ -147,7 +151,7 @@ export const LoginPage: React.FC = () => {
               type="button"
               onClick={() => handleSelectAccount('TEACHER')}
               className={`p-2 rounded-xl text-center border text-xs font-bold transition-all ${
-                email === 'guru@sekolah.edu.my'
+                email === 'guru@skbatandok.edu.my'
                   ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                   : 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
               }`}
@@ -158,7 +162,7 @@ export const LoginPage: React.FC = () => {
               type="button"
               onClick={() => handleSelectAccount('STAFF')}
               className={`p-2 rounded-xl text-center border text-xs font-bold transition-all ${
-                email === 'staf@sekolah.edu.my'
+                email === 'staf@skbatandok.edu.my'
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                   : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
               }`}
@@ -186,7 +190,7 @@ export const LoginPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@sekolah.edu.my"
+                  placeholder="admin@skbatandok.edu.my"
                   className="w-full text-sm pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
