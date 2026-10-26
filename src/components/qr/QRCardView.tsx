@@ -11,6 +11,7 @@ interface QRCardItemProps {
 export const StudentQRCard: React.FC<QRCardItemProps> = ({ student, plainToken }) => {
   const [qrSrc, setQrSrc] = useState<string>('');
   const schoolName = import.meta.env.VITE_SCHOOL_NAME || 'SK BATANDOK BEAUFORT';
+  const schoolCode = import.meta.env.VITE_SCHOOL_CODE || 'XBA6003';
 
   useEffect(() => {
     if (plainToken) {
@@ -19,47 +20,92 @@ export const StudentQRCard: React.FC<QRCardItemProps> = ({ student, plainToken }
   }, [plainToken]);
 
   return (
-    <div className="qr-card-item bg-white border-2 border-slate-700 rounded-xl p-3.5 flex flex-col justify-between items-center text-center shadow-xs w-full max-w-[280px] h-[360px] mx-auto relative overflow-hidden">
+    <div className="qr-card-item relative bg-white border border-slate-300 rounded-2xl shadow-sm w-full max-w-[275px] h-[375px] mx-auto overflow-hidden flex flex-col justify-between text-center select-none">
       
-      {/* Header Kad */}
-      <div className="w-full border-b border-slate-300 pb-2 flex items-center justify-center space-x-1.5">
-        <img src="/logo.png?v=20261026b" alt="Lencana SK Batandok" className="w-5 h-5 object-contain" />
-        <span className="font-extrabold text-[12px] uppercase tracking-tight text-slate-800">
-          {schoolName}
-        </span>
-      </div>
+      {/* Background Graphic */}
+      <img 
+        src="/card-bg.png?v=20261026" 
+        alt="Latar Belakang Kad" 
+        className="absolute inset-0 w-full h-full object-fill pointer-events-none z-0" 
+      />
 
-      {/* QR Code */}
-      <div className="my-auto p-1.5 bg-white rounded-lg border border-slate-200">
-        {qrSrc ? (
-          <img src={qrSrc} alt={`QR Murid ${student.fullName}`} className="w-36 h-36 object-contain" />
-        ) : (
-          <div className="w-36 h-36 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+      {/* Card Content (Layered over background) */}
+      <div className="relative z-10 flex flex-col justify-between h-full p-3 pt-3.5 pb-2.5">
+        
+        {/* Header: Logo & School Info */}
+        <div className="flex flex-col items-center">
+          <div className="flex items-center justify-center space-x-2">
+            <img 
+              src="/logo.png?v=20261026b" 
+              alt="Lencana SK Batandok" 
+              className="w-8 h-8 object-contain drop-shadow-xs" 
+            />
+            <div className="text-left">
+              <h3 className="font-black text-[12px] leading-tight text-slate-900 tracking-tight uppercase">
+                {schoolName}
+              </h3>
+              <p className="text-[9px] font-bold text-blue-800 tracking-wider font-mono">
+                KOD: {schoolCode} &bull; BEAUFORT
+              </p>
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Maklumat Murid */}
-      <div className="w-full border-t border-slate-300 pt-2 text-center">
-        <h4 className="font-black text-slate-900 text-xs sm:text-sm uppercase tracking-tight line-clamp-2">
-          {student.fullName}
-        </h4>
-        <div className="flex items-center justify-center space-x-2 mt-1">
-          <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-900 font-bold rounded text-[11px]">
-            {student.className || 'Kelas'}
-          </span>
-          {student.studentNumber && (
-            <span className="font-mono text-[10px] text-slate-600">
-              No: {student.studentNumber}
-            </span>
-          )}
+          <div className="w-16 h-0.5 bg-blue-500/30 rounded-full mt-1.5" />
         </div>
-        <p className="text-[9px] text-slate-600 mt-1 font-medium">KAD KEHADIRAN DIGITAL MURID</p>
+
+        {/* QR Code Container */}
+        <div className="my-auto flex flex-col items-center justify-center">
+          <div className="p-2 bg-white rounded-2xl shadow-sm border border-slate-200/80">
+            {qrSrc ? (
+              <img 
+                src={qrSrc} 
+                alt={`QR Murid ${student.fullName}`} 
+                className="w-32 h-32 object-contain" 
+              />
+            ) : (
+              <div className="w-32 h-32 flex items-center justify-center">
+                <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+              </div>
+            )}
+          </div>
+          <span className="text-[9px] font-mono font-semibold text-slate-500 mt-1 tracking-wider">
+            IMBAS UNTUK KEHADIRAN
+          </span>
+        </div>
+
+        {/* Student Details */}
+        <div className="mb-4 px-1">
+          <h4 className="font-black text-slate-900 text-xs sm:text-[13px] uppercase tracking-tight line-clamp-2 leading-tight">
+            {student.fullName}
+          </h4>
+          
+          <div className="flex flex-wrap items-center justify-center gap-1.5 mt-1.5">
+            <span className="inline-block px-2.5 py-0.5 bg-blue-600 text-white font-extrabold rounded-full text-[10px] shadow-xs">
+              {student.className || 'Kelas'}
+            </span>
+            {student.studentNumber && (
+              <span className="font-mono text-[10px] font-bold text-slate-700 bg-white/95 border border-slate-200 px-2 py-0.5 rounded-full">
+                ID: {student.studentNumber}
+              </span>
+            )}
+            {student.role && student.role !== 'Murid' && (
+              <span className="text-[10px] font-bold bg-amber-400 text-amber-950 px-2 py-0.5 rounded-full shadow-xs">
+                ★ {student.role}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Footer Text over Blue Wave */}
+        <div className="mt-auto pt-0.5">
+          <p className="text-[9px] font-black text-white tracking-widest uppercase drop-shadow-xs">
+            KAD KEHADIRAN DIGITAL MURID
+          </p>
+        </div>
+
       </div>
 
-      {/* Tanda Potong */}
-      <div className="absolute top-1 right-1 text-[8px] text-slate-600 font-mono">✂</div>
+      {/* Cut mark helper */}
+      <div className="absolute top-1 right-1 text-[8px] text-blue-900/60 font-mono z-20">✂</div>
     </div>
   );
 };
