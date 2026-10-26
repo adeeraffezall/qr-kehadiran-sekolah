@@ -22,21 +22,51 @@ import { createAuditLog } from './auditService';
 import { mockStore } from './mockDataStore';
 
 export async function loginUser(email: string, pass: string): Promise<User | UserProfile> {
+  const cleanEmail = email.trim();
+  if (!cleanEmail || !pass) {
+    throw new Error('Sila masukkan emel dan kata laluan yang sah.');
+  }
+
   try {
-    const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
+    const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
     return cred.user;
   } catch (err: any) {
-    // Jika ralat API atau offline, semak pengguna tempatan
-    const demoUsers = mockStore.getUsers();
-    const matched = demoUsers.find(u => u.email.toLowerCase() === email.trim().toLowerCase());
-    if (matched) {
-      if (!matched.active) {
-        throw new Error('Akaun ini telah dinyahaktifkan oleh pihak pentadbir sekolah.');
-      }
-      mockStore.setCurrentUser(matched);
-      return matched;
+    console.warn('Firebase auth failed:', err.code, err.message);
+
+    // Sekiranya kata laluan salah atau akaun tidak wujud dalam Firebase
+    if (
+      err.code === 'auth/invalid-credential' || 
+      err.code === 'auth/wrong-password' || 
+      err.code === 'auth/user-not-found' ||
+      err.code === 'auth/invalid-email'
+    ) {
+      throw new Error('Emel atau kata laluan tidak tepat. Sila semak semula.');
     }
-    throw err;
+
+    if (err.code === 'auth/user-disabled') {
+      throw new Error('Akaun ini telah dinyahaktifkan oleh pihak pentadbir sekolah.');
+    }
+
+    if (err.code === 'auth/too-many-requests') {
+      throw new Error('Terlalu banyak percubaan log masuk gagal. Sila cuba sebentar lagi.');
+    }
+
+    // Sandaran luar talian HANYA sekiranya sambungan internet terputus sepenuhnya
+    if (err.code === 'auth/network-request-failed') {
+      const demoUsers = mockStore.getUsers();
+      const matched = demoUsers.find(u => u.email.toLowerCase() === cleanEmail.toLowerCase());
+      // Wajib padankan kata laluan rasmi walaupun luar talian
+      if (matched && pass === 'Batandok2026!') {
+        if (!matched.active) {
+          throw new Error('Akaun ini telah dinyahaktifkan oleh pihak pentadbir sekolah.');
+        }
+        mockStore.setCurrentUser(matched);
+        return matched;
+      }
+      throw new Error('Sambungan internet terputus atau kata laluan tidak tepat.');
+    }
+
+    throw new Error(err.message || 'Ralat semasa log masuk.');
   }
 }
 
