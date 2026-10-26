@@ -304,8 +304,10 @@ export const StudentsPage: React.FC = () => {
                 <tr>
                   <th className="py-3 px-4">Bil</th>
                   <th className="py-3 px-4">Nama Penuh Murid</th>
-                  <th className="py-3 px-4">No. Murid</th>
+                  <th className="py-3 px-4">ID Murid</th>
                   <th className="py-3 px-4">Kelas Semasa</th>
+                  <th className="py-3 px-4">Jantina</th>
+                  <th className="py-3 px-4">Jawatan</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Token QR</th>
                   {isAdmin && <th className="py-3 px-4 text-right">Tindakan</th>}
@@ -314,7 +316,7 @@ export const StudentsPage: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {filteredStudents.length === 0 ? (
                   <tr>
-                    <td colSpan={isAdmin ? 7 : 6} className="py-8 text-center text-slate-400">
+                    <td colSpan={isAdmin ? 9 : 8} className="py-8 text-center text-slate-400">
                       Tiada murid ditemui dalam carian atau kriteria ini.
                     </td>
                   </tr>
@@ -323,9 +325,27 @@ export const StudentsPage: React.FC = () => {
                     <tr key={s.id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-4 font-mono text-slate-400">{idx + 1}</td>
                       <td className="py-3 px-4 font-bold text-slate-900">{s.fullName}</td>
-                      <td className="py-3 px-4 font-mono text-slate-500">{s.studentNumber || '-'}</td>
+                      <td className="py-3 px-4 font-mono text-slate-500">{s.studentNumber || s.id}</td>
                       <td className="py-3 px-4">
-                        <span className="font-semibold text-blue-700">{s.className}</span>
+                        <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">{s.className}</span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ${
+                          s.gender === 'Lelaki' 
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        }`}>
+                          {s.gender || '-'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        {s.role && s.role !== 'Murid' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            ★ {s.role}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">Murid</span>
+                        )}
                       </td>
                       <td className="py-3 px-4">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
@@ -336,8 +356,8 @@ export const StudentsPage: React.FC = () => {
                           {s.active ? 'Aktif' : 'Nyahaktif'}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-mono text-[11px] text-slate-400 truncate max-w-[120px]" title={s.qrTokenHash}>
-                        {s.qrTokenHash ? `SHA256: ${s.qrTokenHash.substring(0, 10)}...` : 'Tiada Token'}
+                      <td className="py-3 px-4 font-mono text-[11px] text-slate-400 truncate max-w-[100px]" title={s.qrTokenHash}>
+                        {s.qrTokenHash ? `SHA256: ${s.qrTokenHash.substring(0, 8)}...` : 'Tiada Token'}
                       </td>
                       {isAdmin && (
                         <td className="py-3 px-4 text-right">

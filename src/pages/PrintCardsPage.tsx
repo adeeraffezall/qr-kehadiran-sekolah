@@ -61,12 +61,11 @@ export const PrintCardsPage: React.FC = () => {
         className: classMap.get(s.classId) || 'Kelas'
       }));
 
-      // Jana token sementara untuk paparan cetakan jika belum disimpan
+      // Jana token untuk paparan cetakan
       const tokenMap = new Map<string, string>();
       enriched.forEach(s => {
-        // Token format mengikut ID unik murid atau token sedia ada
-        const dummyToken = `SKB_CARD_${s.id}_${s.qrTokenHash?.substring(0, 8) || 'KEY'}`;
-        tokenMap.set(s.id, dummyToken);
+        const token = (s as any).plainToken || s.qrPlainToken || s.id;
+        tokenMap.set(s.id, token);
       });
 
       setStudents(enriched);

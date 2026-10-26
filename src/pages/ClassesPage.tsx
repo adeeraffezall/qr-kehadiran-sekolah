@@ -193,12 +193,12 @@ export const ClassesPage: React.FC = () => {
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center font-black text-lg">
-                        {c.yearLevel}
+                      <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center font-black text-sm sm:text-base">
+                        {c.yearLevel === 0 ? 'PRA' : c.yearLevel}
                       </div>
                       <div>
                         <h3 className="font-bold text-slate-900 text-base">{c.name}</h3>
-                        <span className="text-xs text-slate-400">Tahun {c.yearLevel}</span>
+                        <span className="text-xs text-slate-400">{c.yearLevel === 0 ? 'Prasekolah' : `Tahun ${c.yearLevel}`}</span>
                       </div>
                     </div>
 
@@ -264,6 +264,7 @@ export const ClassesPage: React.FC = () => {
               onChange={(e) => setYearLevel(Number(e.target.value))}
               className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white"
             >
+              <option value={0}>Prasekolah</option>
               {[1, 2, 3, 4, 5, 6].map(lvl => (
                 <option key={lvl} value={lvl}>Tahun {lvl}</option>
               ))}

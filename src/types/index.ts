@@ -36,6 +36,8 @@ export interface Student {
   fullName: string;
   classId: string;
   className?: string;
+  gender?: string;
+  role?: string;
   active: boolean;
   qrTokenHash: string; // SHA-256 hash bagi token QR
   qrPlainToken?: string; // Digunakan semasa cetakan kad
