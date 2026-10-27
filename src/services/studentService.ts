@@ -133,6 +133,8 @@ export async function addStudent(
     fullName: string;
     studentNumber?: string;
     classId: string;
+    gender?: string;
+    role?: string;
   }
 ): Promise<{ studentId: string; plainToken: string }> {
   const newId = `STD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -145,6 +147,8 @@ export async function addStudent(
     fullName: data.fullName.trim().toUpperCase(),
     studentNumber: data.studentNumber ? data.studentNumber.trim() : '',
     classId: data.classId,
+    gender: data.gender || 'Lelaki',
+    role: data.role || 'Murid',
     active: true,
     plainToken,
     qrTokenHash: tokenHash,
@@ -208,6 +212,85 @@ export async function updateStudent(
     reason || 'Kemaskini data profil murid',
     null,
     data
+  );
+}
+
+/**
+ * Kemaskini jawatan murid secara terus
+ */
+export async function updateStudentRole(
+  actorUid: string,
+  actorEmail: string,
+  studentId: string,
+  newRole: string,
+  reason: string
+): Promise<void> {
+  await updateStudent(
+    actorUid,
+    actorEmail,
+    studentId,
+    { role: newRole },
+    reason || `Kemaskini jawatan kepada ${newRole}`
+  );
+}
+
+/**
+ * Pindahkan jawatan dari satu murid kepada murid lain (Pindah Terus atau Tukar Saling)
+ */
+export async function transferStudentRole(
+  actorUid: string,
+  actorEmail: string,
+  fromStudentId: string,
+  toStudentId: string,
+  mode: 'DIRECT' | 'SWAP',
+  reason: string
+): Promise<void> {
+  const students = await getStudents();
+  const fromStudent = students.find(s => s.id === fromStudentId);
+  const toStudent = students.find(s => s.id === toStudentId);
+
+  if (!fromStudent || !toStudent) {
+    throw new Error('Murid terlibat tidak ditemui dalam rekod.');
+  }
+
+  const roleFrom = fromStudent.role || 'Murid';
+  const roleTo = toStudent.role || 'Murid';
+
+  let newFromRole = 'Murid';
+  let newToRole = roleFrom;
+
+  if (mode === 'SWAP') {
+    newFromRole = roleTo;
+    newToRole = roleFrom;
+  }
+
+  // 1. Kemaskini murid asal
+  await updateStudent(
+    actorUid,
+    actorEmail,
+    fromStudentId,
+    { role: newFromRole },
+    reason || `Pindahan jawatan ${roleFrom} kepada ${toStudent.fullName}`
+  );
+
+  // 2. Kemaskini murid sasaran
+  await updateStudent(
+    actorUid,
+    actorEmail,
+    toStudentId,
+    { role: newToRole },
+    reason || `Penerimaan jawatan ${newToRole} daripada ${fromStudent.fullName}`
+  );
+
+  await createAuditLog(
+    actorUid,
+    actorEmail,
+    'TRANSFER_STUDENT_ROLE',
+    'STUDENT',
+    fromStudentId,
+    reason || `Pindahan jawatan dari ${fromStudent.fullName} (${roleFrom}) kepada ${toStudent.fullName} (${newToRole})`,
+    { fromStudent: { id: fromStudentId, role: roleFrom }, toStudent: { id: toStudentId, role: roleTo } },
+    { fromStudent: { id: fromStudentId, role: newFromRole }, toStudent: { id: toStudentId, role: newToRole } }
   );
 }
 

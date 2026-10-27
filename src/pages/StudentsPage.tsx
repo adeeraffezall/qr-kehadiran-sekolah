@@ -9,12 +9,15 @@ import {
   deleteStudent,
   transferStudentClass, 
   toggleStudentActive,
+  updateStudentRole,
+  transferStudentRole,
   ImportRow
 } from '../services/studentService';
 import { getClasses, ensureBaselineClassesInFirestore } from '../services/classService';
 import { Student, ClassItem } from '../types';
 import { StudentModal } from '../components/students/StudentModal';
 import { TransferClassModal } from '../components/students/TransferClassModal';
+import { TransferRoleModal } from '../components/students/TransferRoleModal';
 import { ImportModal } from '../components/students/ImportModal';
 import { Button } from '../components/ui/Button';
 import { 
@@ -29,7 +32,8 @@ import {
   UserX, 
   UserCheck, 
   Loader2, 
-  QrCode 
+  QrCode,
+  Award
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -52,6 +56,10 @@ export const StudentsPage: React.FC = () => {
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [studentToTransfer, setStudentToTransfer] = useState<Student | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
+
+  const [roleModalOpen, setRoleModalOpen] = useState(false);
+  const [studentForRole, setStudentForRole] = useState<Student | null>(null);
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
 
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -125,7 +133,13 @@ export const StudentsPage: React.FC = () => {
   };
 
   // Handle Add / Edit Student
-  const handleSaveStudent = async (data: { fullName: string; studentNumber: string; classId: string }) => {
+  const handleSaveStudent = async (data: { 
+    fullName: string; 
+    studentNumber: string; 
+    classId: string;
+    gender?: string;
+    role?: string;
+  }) => {
     if (!user) return;
     setIsSavingStudent(true);
     try {
@@ -133,7 +147,9 @@ export const StudentsPage: React.FC = () => {
         await updateStudent(user.uid, user.email || '', editingStudent.id, {
           fullName: data.fullName,
           studentNumber: data.studentNumber,
-          classId: data.classId
+          classId: data.classId,
+          gender: data.gender,
+          role: data.role || 'Murid'
         });
       } else {
         await addStudent(user.uid, user.email || '', data);
@@ -141,6 +157,35 @@ export const StudentsPage: React.FC = () => {
       await loadData();
     } finally {
       setIsSavingStudent(false);
+    }
+  };
+
+  // Handle Update Role Directly
+  const handleUpdateRole = async (studentId: string, newRole: string, reason: string) => {
+    if (!user) return;
+    setIsUpdatingRole(true);
+    try {
+      await updateStudentRole(user.uid, user.email || '', studentId, newRole, reason);
+      await loadData();
+    } finally {
+      setIsUpdatingRole(false);
+    }
+  };
+
+  // Handle Transfer / Swap Role
+  const handleTransferRole = async (
+    fromStudentId: string, 
+    toStudentId: string, 
+    mode: 'DIRECT' | 'SWAP', 
+    reason: string
+  ) => {
+    if (!user) return;
+    setIsUpdatingRole(true);
+    try {
+      await transferStudentRole(user.uid, user.email || '', fromStudentId, toStudentId, mode, reason);
+      await loadData();
+    } finally {
+      setIsUpdatingRole(false);
     }
   };
 
@@ -380,12 +425,34 @@ export const StudentsPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        {s.role && s.role !== 'Murid' ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                            ★ {s.role}
-                          </span>
+                        {isAdmin ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStudentForRole(s);
+                              setRoleModalOpen(true);
+                            }}
+                            className="group flex items-center gap-1.5 cursor-pointer text-left focus:outline-hidden hover:opacity-80 transition-opacity"
+                            title="Klik untuk kemaskini atau pindahkan jawatan murid ini"
+                          >
+                            {s.role && s.role !== 'Murid' ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 group-hover:bg-amber-100 group-hover:border-amber-300 transition-colors">
+                                ★ {s.role}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] group-hover:text-blue-600 group-hover:underline transition-colors">
+                                Murid
+                              </span>
+                            )}
+                          </button>
                         ) : (
-                          <span className="text-slate-400 text-[11px]">Murid</span>
+                          s.role && s.role !== 'Murid' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                              ★ {s.role}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-[11px]">Murid</span>
+                          )
                         )}
                       </td>
                       <td className="py-3 px-4">
@@ -416,10 +483,21 @@ export const StudentsPage: React.FC = () => {
 
                             <button
                               onClick={() => {
+                                setStudentForRole(s);
+                                setRoleModalOpen(true);
+                              }}
+                              className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                              title="Urus & Pindah Jawatan"
+                            >
+                              <Award className="w-4 h-4" />
+                            </button>
+
+                            <button
+                              onClick={() => {
                                 setStudentToTransfer(s);
                                 setTransferModalOpen(true);
                               }}
-                              className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                               title="Pindah Kelas"
                             >
                               <ArrowRightLeft className="w-4 h-4" />
@@ -473,6 +551,19 @@ export const StudentsPage: React.FC = () => {
         classes={classes}
         onTransfer={handleTransfer}
         isSubmitting={isTransferring}
+      />
+
+      <TransferRoleModal
+        isOpen={roleModalOpen}
+        onClose={() => {
+          setRoleModalOpen(false);
+          setStudentForRole(null);
+        }}
+        student={studentForRole}
+        allStudents={students}
+        onUpdateRole={handleUpdateRole}
+        onTransferRole={handleTransferRole}
+        isSubmitting={isUpdatingRole}
       />
 
       <ImportModal

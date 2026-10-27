@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { parseAndValidateImport } from '../src/services/studentService';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { 
+  parseAndValidateImport, 
+  updateStudentRole, 
+  transferStudentRole,
+  getStudents 
+} from '../src/services/studentService';
+import { mockStore } from '../src/services/mockDataStore';
 
 describe('Ujian Pengurusan Murid, Pengesahan Import & Pemeliharaan Sejarah Kelas (Tests 16, 17)', () => {
 
@@ -68,5 +74,82 @@ describe('Ujian Pengurusan Murid, Pengesahan Import & Pemeliharaan Sejarah Kelas
     expect(historicalAttendance.classIdSnapshot).toBe('CLS_ARIF');
     expect(historicalAttendance.classNameSnapshot).toBe('1 ARIF');
     expect(historicalAttendance.classNameSnapshot).not.toBe(student.className);
+  });
+
+  describe('Pengurusan dan Pindahan Jawatan Murid (Roles)', () => {
+    it('boleh mengemaskini jawatan murid secara terus (updateStudentRole)', async () => {
+      const allStudents = await getStudents();
+      expect(allStudents.length).toBeGreaterThan(0);
+      const student = allStudents[0];
+
+      await updateStudentRole(
+        'admin-uid',
+        'admin@skbb.edu.my',
+        student.id,
+        'Ketua Kebersihan',
+        'Pelantikan oleh Guru Kelas'
+      );
+
+      const updatedStudents = await getStudents();
+      const updated = updatedStudents.find(s => s.id === student.id);
+      expect(updated?.role).toBe('Ketua Kebersihan');
+    });
+
+    it('boleh memindahkan jawatan murid secara terus (mode: DIRECT)', async () => {
+      const allStudents = await getStudents();
+      const studentA = allStudents[0];
+      const studentB = allStudents[1];
+
+      // Tetapkan jawatan murid A kepada Ketua Kelas
+      await updateStudentRole('admin-uid', 'admin@skbb.edu.my', studentA.id, 'Ketua Kelas', 'Set initial role');
+      // Pastikan murid B ialah Murid biasa
+      await updateStudentRole('admin-uid', 'admin@skbb.edu.my', studentB.id, 'Murid', 'Set initial role');
+
+      // Pindahkan jawatan dari A ke B secara DIRECT
+      await transferStudentRole(
+        'admin-uid',
+        'admin@skbb.edu.my',
+        studentA.id,
+        studentB.id,
+        'DIRECT',
+        'Pertukaran tugas bilik darjah'
+      );
+
+      const updatedStudents = await getStudents();
+      const resA = updatedStudents.find(s => s.id === studentA.id);
+      const resB = updatedStudents.find(s => s.id === studentB.id);
+
+      // Student A kembali jadi Murid biasa, Student B kini Ketua Kelas
+      expect(resA?.role).toBe('Murid');
+      expect(resB?.role).toBe('Ketua Kelas');
+    });
+
+    it('boleh menukar saling jawatan antara dua orang murid (mode: SWAP)', async () => {
+      const allStudents = await getStudents();
+      const studentA = allStudents[0];
+      const studentB = allStudents[1];
+
+      // Tetapkan A = Ketua Kelas, B = Penolong Kelas
+      await updateStudentRole('admin-uid', 'admin@skbb.edu.my', studentA.id, 'Ketua Kelas', 'Initial');
+      await updateStudentRole('admin-uid', 'admin@skbb.edu.my', studentB.id, 'Penolong Kelas', 'Initial');
+
+      // Tukar saling jawatan
+      await transferStudentRole(
+        'admin-uid',
+        'admin@skbb.edu.my',
+        studentA.id,
+        studentB.id,
+        'SWAP',
+        'Tukar ganti ketua dan penolong'
+      );
+
+      const updatedStudents = await getStudents();
+      const resA = updatedStudents.find(s => s.id === studentA.id);
+      const resB = updatedStudents.find(s => s.id === studentB.id);
+
+      // A kini Penolong Kelas, B kini Ketua Kelas
+      expect(resA?.role).toBe('Penolong Kelas');
+      expect(resB?.role).toBe('Ketua Kelas');
+    });
   });
 });
