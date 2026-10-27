@@ -248,6 +248,17 @@ export const AnnualRolloverModal: React.FC<AnnualRolloverModalProps> = ({
                     const isGraduating = m.targetClassId === 'GRADUATE';
                     const isRetaining = m.targetClassId === 'RETAIN';
 
+                    // Cari yearLevel kelas sumber
+                    const sourceClass = uniqueClasses.find(c => c.id === m.sourceClassId);
+                    const sourceYearLevel = sourceClass?.yearLevel ?? 0;
+                    const nextYearLevel = sourceYearLevel + 1;
+
+                    // Hadkan pilihan: hanya tunjukkan kelas yang yearLevel = sourceYearLevel + 1
+                    // (kelas yang satu tahun lebih tinggi dari kelas sumber)
+                    const eligibleTargetClasses = uniqueClasses.filter(
+                      c => c.active && c.yearLevel === nextYearLevel
+                    );
+
                     return (
                       <div key={m.sourceClassId} className="p-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 hover:bg-slate-50">
                         {/* Kelas Sumber */}
@@ -272,16 +283,18 @@ export const AnnualRolloverModal: React.FC<AnnualRolloverModalProps> = ({
                             }`}
                           >
                             <optgroup label="Tindakan Khas">
-                              <option value="GRADUATE">🎓 Tamat Persekolahan (Tahun 6 / Alumni)</option>
+                              <option value="GRADUATE">🎓 Tamat Persekolahan (Alumni)</option>
                               <option value="RETAIN">⏸ Kekal Dalam Kelas Ini (Tiada Pertukaran)</option>
                             </optgroup>
-                            <optgroup label="Naik Kelas Ke:">
-                              {uniqueClasses.filter(c => c.active).map(c => (
-                                <option key={c.id} value={c.id}>
-                                  ➡ Naik ke {c.name} ({c.yearLevel === 0 ? 'Pra' : `Tahun ${c.yearLevel}`})
-                                </option>
-                              ))}
-                            </optgroup>
+                            {eligibleTargetClasses.length > 0 && (
+                              <optgroup label={`Naik ke Tahun ${nextYearLevel}:`}>
+                                {eligibleTargetClasses.map(c => (
+                                  <option key={c.id} value={c.id}>
+                                    ➡ {c.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
                           </select>
                         </div>
                       </div>
