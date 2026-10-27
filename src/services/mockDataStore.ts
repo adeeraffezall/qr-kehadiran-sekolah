@@ -1596,6 +1596,11 @@ export class MockDataStore {
       this.save();
     }
 
+    if (this.data) {
+      // Pastikan data kekal dari localStorage tidak mengekalkan currentUser merentas penutupan browser
+      this.data.currentUser = null;
+    }
+
     // Pastikan ambang lewat mematuhi tetapan waktu tersimpan
     const config = getLocalSessionConfig();
     if (this.data && Array.isArray(this.data.sessions)) {
@@ -1610,7 +1615,9 @@ export class MockDataStore {
   private save() {
     if (typeof localStorage !== 'undefined') {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+        // Jangan simpan currentUser ke dalam localStorage kekal bagi mematuhi dasar sesi pelayar
+        const toSave = { ...this.data, currentUser: null };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
       } catch (e) {
         console.warn('LocalStorage save failed:', e);
       }
@@ -1618,11 +1625,34 @@ export class MockDataStore {
   }
 
   getCurrentUser(): UserProfile | null {
+    if (typeof sessionStorage !== 'undefined') {
+      const active = sessionStorage.getItem('skb_session_active');
+      if (active !== '1') {
+        return null;
+      }
+      const stored = sessionStorage.getItem('SKB_SESSION_USER');
+      if (stored) {
+        try {
+          return JSON.parse(stored);
+        } catch {
+          return null;
+        }
+      }
+    }
     return this.data.currentUser;
   }
 
   setCurrentUser(u: UserProfile | null) {
     this.data.currentUser = u;
+    if (typeof sessionStorage !== 'undefined') {
+      if (u) {
+        sessionStorage.setItem('SKB_SESSION_USER', JSON.stringify(u));
+        sessionStorage.setItem('skb_session_active', '1');
+      } else {
+        sessionStorage.removeItem('SKB_SESSION_USER');
+        sessionStorage.removeItem('skb_session_active');
+      }
+    }
     this.save();
   }
 

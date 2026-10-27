@@ -1,14 +1,11 @@
-import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { getUserProfile, loginUser, logoutUser, bootstrapFirstAdmin, loginAsDemoRole } from '../services/authService';
 import { UserProfile, UserRole } from '../types';
 import { mockStore } from '../services/mockDataStore';
-import { 
-  sessionManager, 
-  DEFAULT_TIMEOUT_MESSAGE, 
-  WARNING_WINDOW_MS 
-} from '../services/sessionManager';
+
+export const BROWSER_SESSION_KEY = 'skb_browser_session_active';
 
 interface AuthContextType {
   user: User | UserProfile | null;
@@ -20,14 +17,9 @@ interface AuthContextType {
   isStaff: boolean;
   isSchoolStaff: boolean;
   isDeactivated: boolean;
-  sessionExpiredMessage: string | null;
-  isWarningModalOpen: boolean;
-  sessionRemainingMs: number;
   login: (email: string, pass: string) => Promise<User | UserProfile>;
   loginDemo: (role: UserRole) => void;
   logout: () => Promise<void>;
-  extendSession: () => void;
-  clearExpiredMessage: () => void;
   refreshProfile: () => Promise<void>;
   bootstrapAdmin: () => Promise<boolean>;
 }
@@ -38,9 +30,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | UserProfile | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [sessionExpiredMessage, setSessionExpiredMessage] = useState<string | null>(null);
-  const [isWarningModalOpen, setIsWarningModalOpen] = useState<boolean>(false);
-  const [sessionRemainingMs, setSessionRemainingMs] = useState<number>(0);
 
   const fetchProfile = async (currentUser: User | UserProfile | null) => {
     if (!currentUser) {
@@ -59,147 +48,85 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const handleSessionExpired = useCallback(async () => {
-    setIsWarningModalOpen(false);
-    sessionManager.terminateSession(DEFAULT_TIMEOUT_MESSAGE);
-    await logoutUser();
-    setUser(null);
-    setProfile(null);
-    setSessionExpiredMessage(DEFAULT_TIMEOUT_MESSAGE);
-  }, []);
-
-  const extendSession = useCallback(() => {
-    const success = sessionManager.extendSession();
-    if (success) {
-      setIsWarningModalOpen(false);
-      setSessionRemainingMs(sessionManager.getRemainingTimeMs());
-    } else {
-      handleSessionExpired();
-    }
-  }, [handleSessionExpired]);
-
-  const clearExpiredMessage = useCallback(() => {
-    setSessionExpiredMessage(null);
-    sessionManager.consumeTerminatedMessage();
-  }, []);
-
-  // 1. Inisialisasi Aplikasi & Validasi Sesi Semasa Mula Dibuka
   useEffect(() => {
-    const storedReason = sessionManager.consumeTerminatedMessage();
-    if (storedReason) {
-      setSessionExpiredMessage(storedReason);
-    }
+    // Semak sama ada sesi browser ini masih aktif (disimpan dalam sessionStorage)
+    const isSessionActive = typeof sessionStorage !== 'undefined' && sessionStorage.getItem(BROWSER_SESSION_KEY) === '1';
 
-    const lastActive = sessionManager.getLastActiveTimestamp();
-    const demoUser = mockStore.getCurrentUser();
-
-    // Sekiranya ada sesi tersimpan tetapi telah tamat tempoh (> 30 minit):
-    if (lastActive > 0 && !sessionManager.isSessionValid()) {
+    // Sekiranya browser baru sahaja dibuka dan tiada sesi aktif dalam sessionStorage:
+    // Pengguna wajib log masuk semula. Bersihkan sebarang token Firebase atau profil setempat lama.
+    if (!isSessionActive) {
       logoutUser().finally(() => {
         setUser(null);
         setProfile(null);
         setLoading(false);
-        setSessionExpiredMessage(DEFAULT_TIMEOUT_MESSAGE);
       });
-      return;
     }
 
-    // Jika sesi masih sah (< 30 minit) dan pengguna demo wujud:
-    if (sessionManager.isSessionValid() && demoUser) {
-      setUser(demoUser);
-      setProfile(demoUser);
-      setLoading(false);
-      sessionManager.recordUserActivity();
-    }
-
-    // Dengar perubahan status Firebase Auth
+    // Dengar status pengesahan Firebase
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        // Pastikan sesi Firebase tidak dihidupkan jika sesi ketidakaktifan tempatan telah luput
-        if (!sessionManager.isSessionValid()) {
-          await logoutUser();
-          setUser(null);
-          setProfile(null);
-          setLoading(false);
-          setSessionExpiredMessage(DEFAULT_TIMEOUT_MESSAGE);
-          return;
-        }
+      const activeNow = typeof sessionStorage !== 'undefined' && sessionStorage.getItem(BROWSER_SESSION_KEY) === '1';
 
-        setUser(currentUser);
-        await fetchProfile(currentUser);
-        sessionManager.recordUserActivity();
-      } else if (!mockStore.getCurrentUser() || !sessionManager.isSessionValid()) {
+      if (currentUser && !activeNow) {
+        // Sekiranya terdapat token pudar dari pembukaan semula browser, paksa log keluar
+        await logoutUser();
         setUser(null);
         setProfile(null);
         setLoading(false);
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  // 2. Pemantau Aktiviti Fizikal & Pemasa Semakan Inactivity (Setiap 1 Saat)
-  useEffect(() => {
-    if (!user) {
-      setIsWarningModalOpen(false);
-      return;
-    }
-
-    // Pasang pendengar peristiwa fizikal pengguna (mouse, touch, keydown, scroll)
-    const cleanupActivity = sessionManager.attachUserActivityListeners();
-
-    // Dengar acara penyegerakan merentas tab
-    const unsubscribeEvents = sessionManager.onSessionEvent((event) => {
-      if (event.type === 'TERMINATE') {
-        setUser(null);
-        setProfile(null);
-        setIsWarningModalOpen(false);
-        setSessionExpiredMessage(event.reason || DEFAULT_TIMEOUT_MESSAGE);
-      } else if (event.type === 'EXTEND' || event.type === 'ACTIVITY') {
-        const rem = sessionManager.getRemainingTimeMs();
-        setSessionRemainingMs(rem);
-        if (!sessionManager.isWarningPeriod()) {
-          setIsWarningModalOpen(false);
-        }
-      }
-    });
-
-    // Semakan berjadual setiap 1 saat
-    const intervalTimer = setInterval(() => {
-      if (!sessionManager.isSessionValid()) {
-        handleSessionExpired();
         return;
       }
 
-      const rem = sessionManager.getRemainingTimeMs();
-      setSessionRemainingMs(rem);
-
-      if (sessionManager.isWarningPeriod()) {
-        setIsWarningModalOpen(true);
+      if (currentUser && activeNow) {
+        setUser(currentUser);
+        await fetchProfile(currentUser);
       } else {
-        setIsWarningModalOpen(false);
+        const demoUser = mockStore.getCurrentUser();
+        if (demoUser && activeNow) {
+          setUser(demoUser);
+          setProfile(demoUser);
+        } else {
+          setUser(null);
+          setProfile(null);
+        }
       }
-    }, 1000);
+      setLoading(false);
+    });
+
+    // Dengar acara log keluar merentas tab jika ada tab lain yang menekan butang Log Keluar
+    let channel: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        channel = new BroadcastChannel('skb_auth_channel');
+        channel.onmessage = (event) => {
+          if (event.data?.type === 'LOGOUT') {
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+          }
+        };
+      } catch {
+        // Fallback jika BroadcastChannel tidak disokong
+      }
+    }
 
     return () => {
-      cleanupActivity();
-      unsubscribeEvents();
-      clearInterval(intervalTimer);
+      unsubscribe();
+      if (channel) channel.close();
     };
-  }, [user, handleSessionExpired]);
+  }, []);
 
   const refreshProfile = async () => {
-    if (user && sessionManager.isSessionValid()) {
+    if (user) {
       await fetchProfile(user);
     }
   };
 
   const login = async (email: string, pass: string) => {
     setLoading(true);
-    setSessionExpiredMessage(null);
     try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(BROWSER_SESSION_KEY, '1');
+      }
       const loggedUser = await loginUser(email, pass);
-      sessionManager.initSession(loggedUser.uid);
       setUser(loggedUser);
       await fetchProfile(loggedUser);
       return loggedUser;
@@ -209,9 +136,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const loginDemo = (role: UserRole) => {
-    setSessionExpiredMessage(null);
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(BROWSER_SESSION_KEY, '1');
+    }
     const demoUser = loginAsDemoRole(role);
-    sessionManager.initSession(demoUser.uid);
     setUser(demoUser);
     setProfile(demoUser);
     setLoading(false);
@@ -219,20 +147,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     setLoading(true);
-    setIsWarningModalOpen(false);
-    sessionManager.terminateSession('Pengguna telah log keluar secara manual.');
     try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(BROWSER_SESSION_KEY);
+      }
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        try {
+          const channel = new BroadcastChannel('skb_auth_channel');
+          channel.postMessage({ type: 'LOGOUT' });
+          channel.close();
+        } catch {
+          // Abaikan
+        }
+      }
       await logoutUser();
       setUser(null);
       setProfile(null);
-      setSessionExpiredMessage(null);
     } finally {
       setLoading(false);
     }
   };
 
   const handleBootstrap = async (): Promise<boolean> => {
-    if (!user || !sessionManager.isSessionValid()) return false;
+    if (!user) return false;
     const ok = await bootstrapFirstAdmin(user);
     if (ok) {
       await refreshProfile();
@@ -259,14 +196,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isStaff,
         isSchoolStaff,
         isDeactivated,
-        sessionExpiredMessage,
-        isWarningModalOpen,
-        sessionRemainingMs,
         login,
         loginDemo,
         logout,
-        extendSession,
-        clearExpiredMessage,
         refreshProfile,
         bootstrapAdmin: handleBootstrap
       }}

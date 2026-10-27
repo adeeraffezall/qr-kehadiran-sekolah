@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { resetPassword } from '../services/authService';
-import { Lock, Mail, AlertCircle, Loader2, Eye, EyeOff, ShieldCheck, Clock } from 'lucide-react';
+import { Lock, Mail, AlertCircle, Loader2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -17,7 +17,7 @@ export const LoginPage: React.FC = () => {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
 
-  const { user, login, sessionExpiredMessage, clearExpiredMessage } = useAuth();
+  const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -93,16 +93,6 @@ export const LoginPage: React.FC = () => {
           <p className="text-xs text-slate-500 mb-5">
             Sila masukkan alamat emel rasmi dan kata laluan anda untuk mengakses sistem.
           </p>
-
-          {sessionExpiredMessage && (
-            <div className="mb-4 p-3.5 bg-amber-50 border border-amber-300 text-amber-950 text-xs rounded-xl flex items-start space-x-2.5 animate-in fade-in duration-200">
-              <Clock className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600" />
-              <div>
-                <strong className="block font-bold">Sesi Tamat Tempoh</strong>
-                <span>{sessionExpiredMessage}</span>
-              </div>
-            </div>
-          )}
 
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-start space-x-2 animate-in fade-in duration-200">

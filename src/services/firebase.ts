@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getAuth, connectAuthEmulator, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 
@@ -17,6 +17,14 @@ export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const functions = getFunctions(app, 'asia-southeast1');
+
+// Tetapkan persistence kepada browserSessionPersistence (sesi pelayar sahaja)
+// Pengguna kekal log masuk selagi sesi browser dibuka, dan mesti log masuk semula apabila browser ditutup
+if (typeof window !== 'undefined') {
+  setPersistence(auth, browserSessionPersistence).catch((err) => {
+    console.warn('Gagal menetapkan browserSessionPersistence:', err);
+  });
+}
 
 // Sambung ke emulator jika diaktifkan dalam fail .env
 if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
