@@ -471,3 +471,252 @@ export async function deleteStudent(
     null
   );
 }
+
+export interface RolloverClassMapping {
+  sourceClassId: string;
+  sourceClassName: string;
+  targetClassId: string; // ID kelas sasaran, atau 'GRADUATE', atau 'RETAIN'
+  targetClassName?: string;
+}
+
+export interface RolloverOptions {
+  targetSessionYear: string; // Contoh: '2027' atau '2027/2028'
+  mappings: RolloverClassMapping[];
+  resetClassRoles: boolean; // Set semula Ketua & Penolong Kelas kepada 'Murid'
+  resetAllRoles: boolean;   // Set semula semua jawatan kepada 'Murid'
+  auditReason?: string;
+}
+
+export interface RolloverResult {
+  totalProcessed: number;
+  promotedCount: number;
+  graduatedCount: number;
+  retainedCount: number;
+  details: {
+    studentId: string;
+    studentName: string;
+    action: 'PROMOTED' | 'GRADUATED' | 'RETAINED';
+    fromClassName: string;
+    toClassName: string;
+    previousRole?: string;
+    newRole?: string;
+  }[];
+}
+
+/**
+ * Janakan pemetaan kelas automatik berdasarkan yearLevel
+ * Contoh: Pra (0) -> Tahun 1, Tahun 1 -> Tahun 2, ..., Tahun 5 -> Tahun 6, Tahun 6 -> Tamat/Alumni
+ */
+export function getDefaultRolloverMappings(classes: { id: string; name: string; yearLevel: number; active: boolean }[]): RolloverClassMapping[] {
+  const activeClasses = classes.filter(c => c.active);
+  const sortedClasses = [...activeClasses].sort((a, b) => a.yearLevel - b.yearLevel);
+
+  return sortedClasses.map(c => {
+    // Tahun 6: Tamat Persekolahan secara lalai
+    if (c.yearLevel === 6) {
+      return {
+        sourceClassId: c.id,
+        sourceClassName: c.name,
+        targetClassId: 'GRADUATE',
+        targetClassName: 'Tamat Persekolahan (Alumni)'
+      };
+    }
+
+    // Naik 1 darjah
+    const nextYearLevel = c.yearLevel + 1;
+    const targetClass = sortedClasses.find(tc => tc.yearLevel === nextYearLevel);
+
+    if (targetClass) {
+      return {
+        sourceClassId: c.id,
+        sourceClassName: c.name,
+        targetClassId: targetClass.id,
+        targetClassName: targetClass.name
+      };
+    }
+
+    // Jika tiada kelas seterusnya, tetapkan kepada RETAIN
+    return {
+      sourceClassId: c.id,
+      sourceClassName: c.name,
+      targetClassId: 'RETAIN',
+      targetClassName: `Kekal (${c.name})`
+    };
+  });
+}
+
+/**
+ * Laksanakan proses peralihan sesi persekolahan / naik kelas kelompok
+ */
+export async function executeAnnualRollover(
+  actorUid: string,
+  actorEmail: string,
+  options: RolloverOptions
+): Promise<RolloverResult> {
+  const { targetSessionYear, mappings, resetClassRoles, resetAllRoles, auditReason } = options;
+
+  const [allStudents, allClasses] = await Promise.all([
+    getStudents(undefined, false),
+    mockStore.getClasses()
+  ]);
+
+  const classMap = new Map<string, { id: string; name: string }>();
+  allClasses.forEach(c => classMap.set(c.id, c));
+
+  const mappingMap = new Map<string, RolloverClassMapping>();
+  mappings.forEach(m => mappingMap.set(m.sourceClassId, m));
+
+  const resultDetails: RolloverResult['details'] = [];
+  let promotedCount = 0;
+  let graduatedCount = 0;
+  let retainedCount = 0;
+
+  // Hanya proses murid yang aktif pada masa ini
+  const activeStudents = allStudents.filter(s => s.active);
+
+  const updatesToApply: {
+    studentId: string;
+    studentName: string;
+    data: Partial<Student>;
+  }[] = [];
+
+  for (const student of activeStudents) {
+    const mapping = mappingMap.get(student.classId);
+    if (!mapping) {
+      retainedCount++;
+      resultDetails.push({
+        studentId: student.id,
+        studentName: student.fullName,
+        action: 'RETAINED',
+        fromClassName: student.className || 'Kelas',
+        toClassName: student.className || 'Kelas'
+      });
+      continue;
+    }
+
+    const currentRole = student.role || 'Murid';
+    let newRole = currentRole;
+
+    if (resetAllRoles) {
+      newRole = 'Murid';
+    } else if (resetClassRoles && (currentRole === 'Ketua Kelas' || currentRole === 'Penolong Kelas')) {
+      newRole = 'Murid';
+    }
+
+    if (mapping.targetClassId === 'GRADUATE') {
+      graduatedCount++;
+      const updateData: Partial<Student> = {
+        active: false,
+        role: newRole
+      };
+      updatesToApply.push({
+        studentId: student.id,
+        studentName: student.fullName,
+        data: updateData
+      });
+      resultDetails.push({
+        studentId: student.id,
+        studentName: student.fullName,
+        action: 'GRADUATED',
+        fromClassName: student.className || mapping.sourceClassName,
+        toClassName: 'Tamat Persekolahan (Alumni)',
+        previousRole: currentRole,
+        newRole
+      });
+    } else if (mapping.targetClassId === 'RETAIN' || mapping.targetClassId === student.classId) {
+      retainedCount++;
+      if (newRole !== currentRole) {
+        updatesToApply.push({
+          studentId: student.id,
+          studentName: student.fullName,
+          data: { role: newRole }
+        });
+      }
+      resultDetails.push({
+        studentId: student.id,
+        studentName: student.fullName,
+        action: 'RETAINED',
+        fromClassName: student.className || mapping.sourceClassName,
+        toClassName: student.className || mapping.sourceClassName,
+        previousRole: currentRole,
+        newRole
+      });
+    } else {
+      const targetClass = classMap.get(mapping.targetClassId);
+      const targetClassName = targetClass?.name || mapping.targetClassName || 'Kelas Baharu';
+
+      promotedCount++;
+      const updateData: Partial<Student> = {
+        classId: mapping.targetClassId,
+        className: targetClassName,
+        role: newRole
+      };
+      updatesToApply.push({
+        studentId: student.id,
+        studentName: student.fullName,
+        data: updateData
+      });
+      resultDetails.push({
+        studentId: student.id,
+        studentName: student.fullName,
+        action: 'PROMOTED',
+        fromClassName: student.className || mapping.sourceClassName,
+        toClassName: targetClassName,
+        previousRole: currentRole,
+        newRole
+      });
+    }
+  }
+
+  // 1. Simpan ke Cloud Firestore secara berkumpulan (writeBatch)
+  try {
+    const BATCH_SIZE = 400;
+    for (let i = 0; i < updatesToApply.length; i += BATCH_SIZE) {
+      const slice = updatesToApply.slice(i, i + BATCH_SIZE);
+      const batch = writeBatch(db);
+      slice.forEach(item => {
+        const studentRef = doc(db, 'students', item.studentId);
+        batch.update(studentRef, {
+          ...item.data,
+          updatedAt: serverTimestamp()
+        });
+      });
+      await batch.commit();
+    }
+  } catch (err) {
+    console.warn('Ralat simpanan batch Firestore (menggunakan fallback setempat):', err);
+  }
+
+  // 2. Simpan ke mockStore setempat
+  updatesToApply.forEach(item => {
+    mockStore.updateStudent(item.studentId, item.data);
+  });
+
+  // 3. Log Audit Rasmi
+  const summaryMsg = auditReason || 
+    `Peralihan Sesi Persekolahan ke ${targetSessionYear}: ${promotedCount} murid dinaikkan kelas, ${graduatedCount} murid Tahun 6 tamat sekolah, ${retainedCount} murid kekal.`;
+
+  await createAuditLog(
+    actorUid,
+    actorEmail,
+    'ANNUAL_ROLLOVER',
+    'STUDENT',
+    'SK_BATANDOK',
+    summaryMsg,
+    { targetSessionYear, activeStudentsCount: activeStudents.length },
+    {
+      promotedCount,
+      graduatedCount,
+      retainedCount,
+      totalProcessed: updatesToApply.length
+    }
+  );
+
+  return {
+    totalProcessed: updatesToApply.length,
+    promotedCount,
+    graduatedCount,
+    retainedCount,
+    details: resultDetails
+  };
+}

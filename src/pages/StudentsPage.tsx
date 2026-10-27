@@ -11,6 +11,9 @@ import {
   toggleStudentActive,
   updateStudentRole,
   transferStudentRole,
+  executeAnnualRollover,
+  RolloverOptions,
+  RolloverResult,
   ImportRow
 } from '../services/studentService';
 import { getClasses, ensureBaselineClassesInFirestore } from '../services/classService';
@@ -19,6 +22,7 @@ import { StudentModal } from '../components/students/StudentModal';
 import { TransferClassModal } from '../components/students/TransferClassModal';
 import { TransferRoleModal } from '../components/students/TransferRoleModal';
 import { ImportModal } from '../components/students/ImportModal';
+import { AnnualRolloverModal } from '../components/classes/AnnualRolloverModal';
 import { Button } from '../components/ui/Button';
 import { 
   Users, 
@@ -33,7 +37,8 @@ import {
   UserCheck, 
   Loader2, 
   QrCode,
-  Award
+  Award,
+  GraduationCap
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -63,6 +68,9 @@ export const StudentsPage: React.FC = () => {
 
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+
+  const [rolloverModalOpen, setRolloverModalOpen] = useState(false);
+  const [isRollingOver, setIsRollingOver] = useState(false);
 
   useEffect(() => {
     let unsubStudents: () => void = () => {};
@@ -257,6 +265,19 @@ export const StudentsPage: React.FC = () => {
     }
   };
 
+  // Handle Annual Rollover
+  const handleExecuteRollover = async (options: RolloverOptions): Promise<RolloverResult> => {
+    if (!user) throw new Error('Pengguna tidak disahkan.');
+    setIsRollingOver(true);
+    try {
+      const res = await executeAnnualRollover(user.uid, user.email || '', options);
+      await loadData();
+      return res;
+    } finally {
+      setIsRollingOver(false);
+    }
+  };
+
   // Export Student List to Excel
   const handleExportStudents = () => {
     const rows = filteredStudents.map((s, idx) => ({
@@ -303,6 +324,16 @@ export const StudentsPage: React.FC = () => {
 
         {isAdmin && (
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRolloverModalOpen(true)}
+              icon={<GraduationCap className="w-3.5 h-3.5 text-blue-600" />}
+              className="bg-white border-blue-200 text-blue-700 hover:bg-blue-50"
+            >
+              Peralihan Sesi (Naik Kelas)
+            </Button>
+
             <Button
               variant="outline"
               size="sm"
@@ -573,6 +604,15 @@ export const StudentsPage: React.FC = () => {
         existingStudentNumbers={existingStudentNumbers}
         onCommitImport={handleCommitImport}
         isImporting={isImporting}
+      />
+
+      <AnnualRolloverModal
+        isOpen={rolloverModalOpen}
+        onClose={() => setRolloverModalOpen(false)}
+        classes={classes}
+        students={students}
+        onExecuteRollover={handleExecuteRollover}
+        isExecuting={isRollingOver}
       />
 
     </div>

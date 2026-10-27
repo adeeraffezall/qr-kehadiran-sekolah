@@ -9,11 +9,17 @@ import {
   deleteClass, 
   clearAllSchoolData 
 } from '../services/classService';
-import { getStudents } from '../services/studentService';
+import { 
+  getStudents, 
+  executeAnnualRollover, 
+  RolloverOptions, 
+  RolloverResult 
+} from '../services/studentService';
 import { ClassItem, Student } from '../types';
 import { Modal } from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
-import { GraduationCap, Plus, Edit2, Trash2, Users, Loader2 } from 'lucide-react';
+import { AnnualRolloverModal } from '../components/classes/AnnualRolloverModal';
+import { GraduationCap, Plus, Edit2, Trash2, Users, Loader2, ArrowUpRight } from 'lucide-react';
 
 export const ClassesPage: React.FC = () => {
   const { user, isAdmin } = useAuth();
@@ -28,6 +34,10 @@ export const ClassesPage: React.FC = () => {
   const [yearLevel, setYearLevel] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Rollover State
+  const [rolloverModalOpen, setRolloverModalOpen] = useState(false);
+  const [isRollingOver, setIsRollingOver] = useState(false);
 
   useEffect(() => {
     let unsubClasses: () => void = () => {};
@@ -165,6 +175,18 @@ export const ClassesPage: React.FC = () => {
     }
   };
 
+  const handleExecuteRollover = async (options: RolloverOptions): Promise<RolloverResult> => {
+    if (!user) throw new Error('Pengguna tidak disahkan.');
+    setIsRollingOver(true);
+    try {
+      const res = await executeAnnualRollover(user.uid, user.email || '', options);
+      await loadData();
+      return res;
+    } finally {
+      setIsRollingOver(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       
@@ -178,7 +200,17 @@ export const ClassesPage: React.FC = () => {
         </div>
 
         {isAdmin && (
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRolloverModalOpen(true)}
+              icon={<GraduationCap className="w-3.5 h-3.5 text-blue-600" />}
+              className="bg-white border-blue-200 text-blue-700 hover:bg-blue-50"
+            >
+              Peralihan Sesi (Naik Kelas)
+            </Button>
+
             {classes.length > 0 && (
               <Button
                 variant="outline"
@@ -328,6 +360,16 @@ export const ClassesPage: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Modal Peralihan Sesi / Naik Kelas Kelompok */}
+      <AnnualRolloverModal
+        isOpen={rolloverModalOpen}
+        onClose={() => setRolloverModalOpen(false)}
+        classes={classes}
+        students={students}
+        onExecuteRollover={handleExecuteRollover}
+        isExecuting={isRollingOver}
+      />
 
     </div>
   );
