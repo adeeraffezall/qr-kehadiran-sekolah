@@ -42,11 +42,59 @@ export async function ensureBaselineClassesInFirestore(): Promise<void> {
         await batch.commit();
         console.log(`[Firestore] Berjaya menyegerak ${initialClasses.length} kelas rasmi ke Cloud Firestore.`);
       }
+    } else {
+      // Bersihkan jika ada sebarang dokumen pendua dalam Firestore
+      await cleanDuplicateClassesInFirestore();
     }
   } catch (err) {
     console.warn('Gagal menyegerak kelas ke Firestore:', err);
   } finally {
     isSyncingClasses = false;
+  }
+}
+
+/**
+ * Bersihkan sebarang dokumen kelas yang bertindan / pendua dalam Cloud Firestore
+ */
+export async function cleanDuplicateClassesInFirestore(): Promise<void> {
+  try {
+    const classesRef = collection(db, 'classes');
+    const snap = await getDocs(query(classesRef));
+    if (snap.empty) return;
+
+    const seenNames = new Set<string>();
+    const toDeleteIds: string[] = [];
+
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as ClassItem));
+    // Utamakan dokumen dengan ID standard SKB (CLS_PRA, CLS_1B, dsb.)
+    docs.sort((a, b) => {
+      const aCanonical = a.id.startsWith('CLS_') && !a.id.match(/^CLS_\d{13}$/);
+      const bCanonical = b.id.startsWith('CLS_') && !b.id.match(/^CLS_\d{13}$/);
+      if (aCanonical && !bCanonical) return -1;
+      if (!aCanonical && bCanonical) return 1;
+      return 0;
+    });
+
+    for (const c of docs) {
+      if (!c.name) continue;
+      const cleanName = c.name.trim().toUpperCase();
+      if (seenNames.has(cleanName)) {
+        toDeleteIds.push(c.id);
+      } else {
+        seenNames.add(cleanName);
+      }
+    }
+
+    if (toDeleteIds.length > 0) {
+      const batch = writeBatch(db);
+      toDeleteIds.forEach(id => {
+        batch.delete(doc(db, 'classes', id));
+      });
+      await batch.commit();
+      console.log(`[Firestore] Telah memadam ${toDeleteIds.length} rekod kelas pendua.`);
+    }
+  } catch (err) {
+    console.warn('Gagal membersihkan kelas pendua di Firestore:', err);
   }
 }
 
@@ -59,8 +107,16 @@ export function subscribeClasses(callback: (classes: ClassItem[]) => void): () =
     const q = query(classesRef, orderBy('yearLevel', 'asc'), orderBy('name', 'asc'));
     const unsubscribe = onSnapshot(q, (snap) => {
       if (!snap.empty) {
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as ClassItem));
-        list.forEach(c => mockStore.addClass(c));
+        const rawList = snap.docs.map(d => ({ id: d.id, ...d.data() } as ClassItem));
+        const seen = new Set<string>();
+        const list = rawList.filter(c => {
+          if (!c || !c.name) return false;
+          const key = c.name.trim().toUpperCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        mockStore.setClasses(list);
         callback(list);
       } else {
         callback(mockStore.getClasses());
@@ -82,7 +138,17 @@ export async function getClasses(): Promise<ClassItem[]> {
     const q = query(classesRef, orderBy('yearLevel', 'asc'), orderBy('name', 'asc'));
     const snap = await getDocs(q);
     if (!snap.empty) {
-      return snap.docs.map(d => ({ id: d.id, ...d.data() } as ClassItem));
+      const rawList = snap.docs.map(d => ({ id: d.id, ...d.data() } as ClassItem));
+      const seen = new Set<string>();
+      const list = rawList.filter(c => {
+        if (!c || !c.name) return false;
+        const key = c.name.trim().toUpperCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      mockStore.setClasses(list);
+      return list;
     }
   } catch {
     // Sambungan Firestore tidak tersedia

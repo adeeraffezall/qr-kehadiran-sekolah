@@ -1599,6 +1599,33 @@ export class MockDataStore {
     if (this.data) {
       // Pastikan data kekal dari localStorage tidak mengekalkan currentUser merentas penutupan browser
       this.data.currentUser = null;
+
+      // Bersihkan dan nyahduplikasi kelas yang mungkin bertindan dalam localStorage
+      if (Array.isArray(this.data.classes)) {
+        const seenClassNames = new Set<string>();
+        const seenClassIds = new Set<string>();
+        this.data.classes = this.data.classes.filter(c => {
+          if (!c || !c.name) return false;
+          const cleanName = c.name.trim().toUpperCase();
+          if (seenClassNames.has(cleanName) || (c.id && seenClassIds.has(c.id))) {
+            return false;
+          }
+          seenClassNames.add(cleanName);
+          if (c.id) seenClassIds.add(c.id);
+          return true;
+        });
+      }
+
+      // Bersihkan dan nyahduplikasi murid dalam localStorage
+      if (Array.isArray(this.data.students)) {
+        const seenStudentIds = new Set<string>();
+        this.data.students = this.data.students.filter(s => {
+          if (!s || !s.id) return false;
+          if (seenStudentIds.has(s.id)) return false;
+          seenStudentIds.add(s.id);
+          return true;
+        });
+      }
     }
 
     // Pastikan ambang lewat mematuhi tetapan waktu tersimpan
@@ -1661,11 +1688,47 @@ export class MockDataStore {
   }
 
   getClasses(): ClassItem[] {
-    return this.data.classes;
+    const seenNames = new Set<string>();
+    const seenIds = new Set<string>();
+    return this.data.classes.filter(c => {
+      if (!c || !c.name) return false;
+      const cleanName = c.name.trim().toUpperCase();
+      if (seenNames.has(cleanName) || (c.id && seenIds.has(c.id))) {
+        return false;
+      }
+      seenNames.add(cleanName);
+      if (c.id) seenIds.add(c.id);
+      return true;
+    }).sort((a, b) => a.yearLevel - b.yearLevel);
+  }
+
+  setClasses(classes: ClassItem[]) {
+    const seenNames = new Set<string>();
+    const seenIds = new Set<string>();
+    const unique: ClassItem[] = [];
+    for (const c of classes) {
+      if (!c || !c.name) continue;
+      const cleanName = c.name.trim().toUpperCase();
+      if (!seenNames.has(cleanName) && (!c.id || !seenIds.has(c.id))) {
+        seenNames.add(cleanName);
+        if (c.id) seenIds.add(c.id);
+        unique.push(c);
+      }
+    }
+    this.data.classes = unique.sort((a, b) => a.yearLevel - b.yearLevel);
+    this.save();
   }
 
   addClass(item: ClassItem) {
-    this.data.classes.push(item);
+    const cleanName = (item.name || '').trim().toUpperCase();
+    const existingIndex = this.data.classes.findIndex(
+      c => c.id === item.id || (c.name && c.name.trim().toUpperCase() === cleanName)
+    );
+    if (existingIndex >= 0) {
+      this.data.classes[existingIndex] = { ...this.data.classes[existingIndex], ...item };
+    } else {
+      this.data.classes.push(item);
+    }
     this.save();
   }
 
@@ -1720,7 +1783,12 @@ export class MockDataStore {
   }
 
   addStudent(student: Student & { plainToken: string }) {
-    this.data.students.push(student);
+    const existingIndex = this.data.students.findIndex(s => s.id === student.id);
+    if (existingIndex >= 0) {
+      this.data.students[existingIndex] = { ...this.data.students[existingIndex], ...student };
+    } else {
+      this.data.students.push(student);
+    }
     this.save();
   }
 

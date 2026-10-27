@@ -51,10 +51,26 @@ export const AnnualRolloverModal: React.FC<AnnualRolloverModalProps> = ({
   const [lastResult, setLastResult] = useState<RolloverResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Nyahduplikasi kelas: pastikan setiap kelas unik mengikut nama & ID
+  const uniqueClasses = useMemo(() => {
+    const seenNames = new Set<string>();
+    const seenIds = new Set<string>();
+    return classes.filter(c => {
+      if (!c || !c.name) return false;
+      const cleanName = c.name.trim().toUpperCase();
+      if (seenNames.has(cleanName) || (c.id && seenIds.has(c.id))) {
+        return false;
+      }
+      seenNames.add(cleanName);
+      if (c.id) seenIds.add(c.id);
+      return true;
+    }).sort((a, b) => a.yearLevel - b.yearLevel);
+  }, [classes]);
+
   // Inisialisasi pemetaan kelas lalai apabila modal dibuka
   useEffect(() => {
     if (isOpen) {
-      const initial = getDefaultRolloverMappings(classes);
+      const initial = getDefaultRolloverMappings(uniqueClasses);
       setMappings(initial);
       setTargetYear(String(nextCalendarYear));
       setResetClassRoles(true);
@@ -65,18 +81,30 @@ export const AnnualRolloverModal: React.FC<AnnualRolloverModalProps> = ({
       setLastResult(null);
       setErrorMsg(null);
     }
-  }, [isOpen, classes]);
+  }, [isOpen, uniqueClasses]);
 
   // Kiraan murid aktif mengikut kelas
   const activeStudents = useMemo(() => students.filter(s => s.active), [students]);
 
   const studentCountByClass = useMemo(() => {
+    const nameToCanonicalId = new Map<string, string>();
+    uniqueClasses.forEach(c => {
+      nameToCanonicalId.set(c.name.trim().toUpperCase(), c.id);
+    });
+
     const map = new Map<string, number>();
     activeStudents.forEach(s => {
-      map.set(s.classId, (map.get(s.classId) || 0) + 1);
+      let targetId = s.classId;
+      if (s.className && nameToCanonicalId.has(s.className.trim().toUpperCase())) {
+        targetId = nameToCanonicalId.get(s.className.trim().toUpperCase())!;
+      }
+      map.set(targetId, (map.get(targetId) || 0) + 1);
+      if (targetId !== s.classId) {
+        map.set(s.classId, (map.get(s.classId) || 0) + 1);
+      }
     });
     return map;
-  }, [activeStudents]);
+  }, [activeStudents, uniqueClasses]);
 
   // Statistik Pratonton (Preview Metrics)
   const previewStats = useMemo(() => {
@@ -122,7 +150,7 @@ export const AnnualRolloverModal: React.FC<AnnualRolloverModalProps> = ({
           targetClassName: `Kekal (${m.sourceClassName})`
         };
       }
-      const targetClass = classes.find(c => c.id === newTargetId);
+      const targetClass = uniqueClasses.find(c => c.id === newTargetId);
       return {
         ...m,
         targetClassId: newTargetId,
@@ -133,7 +161,7 @@ export const AnnualRolloverModal: React.FC<AnnualRolloverModalProps> = ({
 
   // Butang reset kepada tetapan pintar lalai
   const handleResetDefaults = () => {
-    setMappings(getDefaultRolloverMappings(classes));
+    setMappings(getDefaultRolloverMappings(uniqueClasses));
   };
 
   // Jalankan proses peralihan
@@ -248,7 +276,7 @@ export const AnnualRolloverModal: React.FC<AnnualRolloverModalProps> = ({
                               <option value="RETAIN">⏸ Kekal Dalam Kelas Ini (Tiada Pertukaran)</option>
                             </optgroup>
                             <optgroup label="Naik Kelas Ke:">
-                              {classes.filter(c => c.active).map(c => (
+                              {uniqueClasses.filter(c => c.active).map(c => (
                                 <option key={c.id} value={c.id}>
                                   ➡ Naik ke {c.name} ({c.yearLevel === 0 ? 'Pra' : `Tahun ${c.yearLevel}`})
                                 </option>

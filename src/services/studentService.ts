@@ -508,8 +508,17 @@ export interface RolloverResult {
  * Contoh: Pra (0) -> Tahun 1, Tahun 1 -> Tahun 2, ..., Tahun 5 -> Tahun 6, Tahun 6 -> Tamat/Alumni
  */
 export function getDefaultRolloverMappings(classes: { id: string; name: string; yearLevel: number; active: boolean }[]): RolloverClassMapping[] {
-  const activeClasses = classes.filter(c => c.active);
-  const sortedClasses = [...activeClasses].sort((a, b) => a.yearLevel - b.yearLevel);
+  // Nyahduplikasi senarai kelas mengikut nama unik
+  const seenNames = new Set<string>();
+  const uniqueActiveClasses = classes.filter(c => {
+    if (!c || !c.name || !c.active) return false;
+    const nameKey = c.name.trim().toUpperCase();
+    if (seenNames.has(nameKey)) return false;
+    seenNames.add(nameKey);
+    return true;
+  });
+
+  const sortedClasses = [...uniqueActiveClasses].sort((a, b) => a.yearLevel - b.yearLevel);
 
   return sortedClasses.map(c => {
     // Tahun 6: Tamat Persekolahan secara lalai
