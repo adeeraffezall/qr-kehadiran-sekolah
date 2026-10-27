@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
+import { useAuth } from '../../hooks/useAuth';
+import { SessionTimeoutModal } from './SessionTimeoutModal';
 
 export const AppLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { isWarningModalOpen, sessionRemainingMs, extendSession, logout } = useAuth();
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -19,6 +22,14 @@ export const AppLayout: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {/* Modal Amaran Had Masa Ketidakaktifan Sesi (2 Minit Sebelum Tamat) */}
+      <SessionTimeoutModal
+        isOpen={isWarningModalOpen}
+        remainingMs={sessionRemainingMs}
+        onExtend={extendSession}
+        onLogout={logout}
+      />
     </div>
   );
 };
