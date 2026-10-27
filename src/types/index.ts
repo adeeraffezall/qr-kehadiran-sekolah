@@ -79,6 +79,12 @@ export interface SessionInfo {
   closedBy?: string;
   openedAt?: any;
   closedAt?: any;
+  isAutoClosed?: boolean;
+  manualOverride?: boolean;
+  manualAction?: 'OPEN' | 'CLOSE' | 'REOPEN' | 'AUTO' | null;
+  manualReason?: string;
+  autoCloseReason?: 'TIME_ELAPSED' | 'BEFORE_START_TIME' | 'PAST_DATE' | 'FUTURE_DATE' | string;
+  updatedAt?: any;
 }
 
 export interface AuditLog {

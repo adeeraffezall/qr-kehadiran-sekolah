@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DEFAULT_SESSION_CONFIG, getLocalSessionConfig, SessionConfig } from '../src/services/settingsService';
 import { mockStore } from '../src/services/mockDataStore';
+import { evaluateSessionStatus } from '../src/services/attendanceService';
+import { SessionInfo } from '../src/types';
 
-describe('Ujian Tetapan Waktu & Ambang Hadir Lewat (Tests 27, 28, 29)', () => {
+describe('Ujian Tetapan Waktu & Ambang Hadir Lewat (Tests 27, 28, 29, 30, 31, 32)', () => {
 
   beforeEach(() => {
     if (typeof localStorage !== 'undefined') {
@@ -47,6 +49,79 @@ describe('Ujian Tetapan Waktu & Ambang Hadir Lewat (Tests 27, 28, 29)', () => {
     const session = mockStore.getSession('2026-10-26', 'PAGI');
     expect(session.lateAfter).toBe('07:00');
     expect(session.startTime).toBe('06:30');
+  });
+
+  // 30. Penutupan Automatik Sesi Pagi Selepas Jam 8:00 Pagi
+  it('30. Sesi pagi ditutup secara automatik apabila waktu semasa melepasi jam 8:00 pagi (08:00)', () => {
+    const session: SessionInfo = {
+      id: '2026-10-27_PAGI',
+      date: '2026-10-27',
+      type: 'PAGI',
+      startTime: '06:30',
+      endTime: '08:00',
+      lateAfter: '07:00',
+      status: 'OPEN'
+    };
+
+    // Semasa waktu imbasan aktif (07:15 AM) -> Sesi OPEN
+    const activeResult = evaluateSessionStatus(session, '07:15', '2026-10-27');
+    expect(activeResult.status).toBe('OPEN');
+    expect(activeResult.isAutoClosed).toBe(false);
+
+    // Tepat pada waktu tamat (08:00 AM) -> Sesi CLOSED secara automatik
+    const exactResult = evaluateSessionStatus(session, '08:00', '2026-10-27');
+    expect(exactResult.status).toBe('CLOSED');
+    expect(exactResult.isAutoClosed).toBe(true);
+
+    // Melepasi waktu tamat (08:05 AM) -> Sesi CLOSED secara automatik
+    const lateResult = evaluateSessionStatus(session, '08:05', '2026-10-27');
+    expect(lateResult.status).toBe('CLOSED');
+    expect(lateResult.isAutoClosed).toBe(true);
+    expect(lateResult.autoCloseReason).toBe('TIME_ELAPSED');
+  });
+
+  // 31. Pilihan Manual Pentadbir: Buka Semula Sesi Selepas Jam 8:00 Pagi
+  it('31. Pentadbir boleh membuka semula sesi secara manual walaupun melepasi jam 8:00 pagi', () => {
+    const session: SessionInfo = {
+      id: '2026-10-27_PAGI',
+      date: '2026-10-27',
+      type: 'PAGI',
+      startTime: '06:30',
+      endTime: '08:00',
+      lateAfter: '07:00',
+      status: 'OPEN',
+      manualOverride: true,
+      manualAction: 'REOPEN',
+      manualReason: 'Hujan lebat, perhimpunan ditangguhkan'
+    };
+
+    // Walaupun waktu sekarang 08:20 AM (melepasi 08:00 AM), sesi kekal OPEN kerana manual override oleh pentadbir
+    const reopenResult = evaluateSessionStatus(session, '08:20', '2026-10-27');
+    expect(reopenResult.status).toBe('OPEN');
+    expect(reopenResult.manualOverride).toBe(true);
+    expect(reopenResult.manualReason).toContain('Hujan lebat');
+  });
+
+  // 32. Pilihan Manual Pentadbir: Tutup Sesi Lebih Awal Sebelum Jam 8:00 Pagi
+  it('32. Pentadbir boleh menutup sesi secara manual lebih awal sebelum jam 8:00 pagi', () => {
+    const session: SessionInfo = {
+      id: '2026-10-27_PAGI',
+      date: '2026-10-27',
+      type: 'PAGI',
+      startTime: '06:30',
+      endTime: '08:00',
+      lateAfter: '07:00',
+      status: 'CLOSED',
+      manualOverride: true,
+      manualAction: 'CLOSE',
+      manualReason: 'Semua murid telah hadir lebih awal'
+    };
+
+    // Walaupun waktu sekarang baru 07:45 AM (sebelum 08:00 AM), sesi ditutup kerana arahan manual pentadbir
+    const closeResult = evaluateSessionStatus(session, '07:45', '2026-10-27');
+    expect(closeResult.status).toBe('CLOSED');
+    expect(closeResult.manualOverride).toBe(true);
+    expect(closeResult.isAutoClosed).toBe(false);
   });
 
 });

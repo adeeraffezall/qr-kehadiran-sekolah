@@ -90,7 +90,7 @@ export const AttendancePage: React.FC = () => {
     };
   }, [selectedDate, selectedSession, selectedClassId]);
 
-  const handleManageSession = async (action: 'OPEN' | 'CLOSE' | 'REOPEN', lateAfter: string, reason?: string) => {
+  const handleManageSession = async (action: 'OPEN' | 'CLOSE' | 'REOPEN' | 'AUTO', lateAfter: string, reason?: string) => {
     if (!user) return;
     setSessionManaging(true);
     try {

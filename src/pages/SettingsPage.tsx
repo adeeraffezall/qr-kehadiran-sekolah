@@ -78,7 +78,7 @@ export const SettingsPage: React.FC = () => {
         user.email || '',
         today,
         'PAGI',
-        'OPEN',
+        'AUTO',
         morningLate,
         `Penetapan ambang lewat ${morningLate} pagi dari Tetapan Waktu Rasmi`
       );

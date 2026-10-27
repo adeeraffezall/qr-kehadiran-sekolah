@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { QRScanner } from '../components/qr/QRScanner';
-import { recordStudentAttendance, getSessionInfo, subscribeSessionInfo } from '../services/attendanceService';
+import { 
+  recordStudentAttendance, 
+  getSessionInfo, 
+  subscribeSessionInfo,
+  evaluateSessionStatus 
+} from '../services/attendanceService';
 import { getTodayMalaysianDate } from '../utils/dateUtils';
 import { SessionInfo, SessionType, Student } from '../types';
 import { getStudents } from '../services/studentService';
@@ -28,6 +33,19 @@ export const ScanPage: React.FC = () => {
     });
     return () => unsub();
   }, [selectedSession, todayStr]);
+
+  // Pemeriksaan masa berkala untuk menutup sesi secara automatik sebaik melepasi jam 8:00 pagi
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (sessionInfo) {
+        const reevaluated = evaluateSessionStatus(sessionInfo);
+        if (reevaluated.status !== sessionInfo.status || reevaluated.isAutoClosed !== sessionInfo.isAutoClosed) {
+          setSessionInfo(reevaluated);
+        }
+      }
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [sessionInfo]);
 
   const handleScan = async (token: string) => {
     const actorUid = user?.uid || 'USR_SCANNER';
@@ -85,11 +103,46 @@ export const ScanPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Status Sesi Jika Ditutup */}
+      {/* Status Sesi Jika Ditutup (Automatik atau Manual) */}
       {sessionInfo && sessionInfo.status === 'CLOSED' && (
-        <div className="p-4 bg-red-100 border border-red-300 rounded-2xl text-red-900 text-xs flex items-center space-x-2 font-semibold">
-          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-          <span>PERHATIAN: Sesi {selectedSession} hari ini telah DITUTUP oleh pentadbir sekolah. Imbasan baharu akan ditolak.</span>
+        <div className={`p-4 rounded-2xl text-xs flex items-start space-x-3 font-medium ${
+          sessionInfo.isAutoClosed 
+            ? 'bg-amber-50 border border-amber-300 text-amber-950' 
+            : 'bg-rose-50 border border-rose-300 text-rose-950'
+        }`}>
+          <AlertCircle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+            sessionInfo.isAutoClosed ? 'text-amber-600' : 'text-rose-600'
+          }`} />
+          <div className="space-y-0.5">
+            <p className="font-bold">
+              {sessionInfo.isAutoClosed 
+                ? `Sesi ${selectedSession} Ditutup Secara Automatik` 
+                : `Sesi ${selectedSession} Ditutup Secara Manual`}
+            </p>
+            <p className="text-[11px] leading-relaxed opacity-90">
+              {sessionInfo.isAutoClosed 
+                ? (sessionInfo.autoCloseReason === 'BEFORE_START_TIME'
+                    ? `Waktu imbasan rasmi murid bermula pada jam ${sessionInfo.startTime || '06:30'} AM. Imbasan baharu ditolak sehingga sesi dibuka.`
+                    : `Waktu imbasan rasmi murid (${sessionInfo.startTime || '06:30'} - ${sessionInfo.endTime || '08:00'}) telah tamat pada jam ${sessionInfo.endTime || '08:00'} AM. Imbasan baharu ditolak secara automatik kecuali dibuka semula oleh pentadbir.`
+                  )
+                : (sessionInfo.manualReason 
+                    ? `Sesi ditutup oleh pihak pentadbir (${sessionInfo.manualReason}). Imbasan baharu ditolak.`
+                    : 'Sesi telah ditutup secara manual oleh pentadbir sekolah. Imbasan baharu ditolak.'
+                  )
+              }
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Maklumat Sesi Jika Dibuka Secara Manual Oleh Pentadbir */}
+      {sessionInfo && sessionInfo.status === 'OPEN' && sessionInfo.manualOverride && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-950 text-xs flex items-center space-x-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0"></span>
+          <span>
+            <strong>Sesi Dibuka Secara Manual oleh Pentadbir</strong>
+            {sessionInfo.manualReason ? ` (${sessionInfo.manualReason})` : ''}. Imbasan kad QR dibenarkan.
+          </span>
         </div>
       )}
 

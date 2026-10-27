@@ -92,13 +92,24 @@ export async function recordStudentAttendance(
     };
   }
 
-  // Semak status sesi
+  // Semak status sesi (penutupan automatik & pilihan manual pentadbir)
   const sessionInfo = await getSessionInfo(dateStr, sessionType);
   if (sessionInfo.status === 'CLOSED') {
+    let closedMsg = `Sesi ${sessionType} bagi tarikh ${dateStr} telah DITUTUP oleh pihak sekolah.`;
+    if (sessionInfo.isAutoClosed) {
+      if (sessionInfo.autoCloseReason === 'BEFORE_START_TIME') {
+        closedMsg = `Sesi ${sessionType} belum dibuka (Waktu imbasan rasmi bermula pada jam ${sessionInfo.startTime} AM).`;
+      } else {
+        closedMsg = `Sesi ${sessionType} telah DITUTUP SECARA AUTOMATIK kerana telah melepasi waktu tamat imbasan (${sessionInfo.endTime} AM). Pentadbir masih boleh membuka semula sesi secara manual jika perlu.`;
+      }
+    } else if (sessionInfo.manualReason) {
+      closedMsg = `Sesi ${sessionType} telah DITUTUP secara manual oleh pentadbir (${sessionInfo.manualReason}).`;
+    }
+
     return {
       success: false,
       code: 'SESSION_CLOSED',
-      message: `Sesi ${sessionType} bagi tarikh ${dateStr} telah DITUTUP oleh pihak sekolah.`
+      message: closedMsg
     };
   }
 
@@ -183,6 +194,77 @@ export async function recordStudentAttendance(
   };
 }
 
+/**
+ * Menilai status sesi secara dinamik mengikut masa semasa & pilihan manual pentadbir.
+ * - Sesi ditutup secara automatik apabila waktu semasa melepasi endTime (contoh: 08:00 AM bagi Sesi Pagi).
+ * - Pentadbir mengekalkan kuasa manual untuk Buka / Tutup / Buka Semula sesi pada bila-bila masa (manualOverride = true).
+ */
+export function evaluateSessionStatus(
+  session: SessionInfo,
+  currentTimeStr?: string,
+  todayDateStr?: string
+): SessionInfo {
+  const today = todayDateStr || getTodayMalaysianDate();
+  const currentTime = currentTimeStr || getMalaysianCurrentTime();
+
+  const evaluated: SessionInfo = { ...session };
+
+  // 1. Tarikh lampau (sebelum hari ini): Sentiasa DITUTUP melainkan jika dibuka secara khas
+  if (evaluated.date < today) {
+    if (!evaluated.manualOverride || evaluated.manualAction !== 'REOPEN') {
+      evaluated.status = 'CLOSED';
+      evaluated.isAutoClosed = true;
+      evaluated.autoCloseReason = 'PAST_DATE';
+      return evaluated;
+    }
+  }
+
+  // 2. Tarikh akan datang (selepas hari ini): Belum tiba
+  if (evaluated.date > today) {
+    evaluated.status = 'CLOSED';
+    evaluated.autoCloseReason = 'FUTURE_DATE';
+    return evaluated;
+  }
+
+  // 3. Tarikh hari ini (evaluated.date === today):
+  // Sekiranya ada campur tangan manual oleh Pentadbir
+  if (evaluated.manualOverride) {
+    if (evaluated.manualAction === 'CLOSE') {
+      evaluated.status = 'CLOSED';
+      evaluated.isAutoClosed = false;
+      return evaluated;
+    }
+    if (evaluated.manualAction === 'OPEN' || evaluated.manualAction === 'REOPEN') {
+      evaluated.status = 'OPEN';
+      evaluated.isAutoClosed = false;
+      return evaluated;
+    }
+  }
+
+  // 4. Mod Automatik Mengikut Jendela Waktu Rasmi Sesi
+  const startTime = evaluated.startTime || (evaluated.type === 'PAGI' ? '06:30' : '12:30');
+  const endTime = evaluated.endTime || (evaluated.type === 'PAGI' ? '08:00' : '14:30');
+
+  if (currentTime >= endTime) {
+    // Melepasi waktu tamat imbasan (cth: 08:00 pagi ke atas bagi sesi pagi) -> DITUTUP SECARA AUTOMATIK
+    evaluated.status = 'CLOSED';
+    evaluated.isAutoClosed = true;
+    evaluated.autoCloseReason = 'TIME_ELAPSED';
+  } else if (currentTime < startTime) {
+    // Sebelum waktu mula sesi imbasan (cth: sebelum 06:30 pagi)
+    evaluated.status = 'CLOSED';
+    evaluated.isAutoClosed = true;
+    evaluated.autoCloseReason = 'BEFORE_START_TIME';
+  } else {
+    // Dalam jendela masa aktif (06:30 hingga 07:59 pagi) -> SESI DIBUKA
+    evaluated.status = 'OPEN';
+    evaluated.isAutoClosed = false;
+    evaluated.autoCloseReason = undefined;
+  }
+
+  return evaluated;
+}
+
 export async function getSessionInfo(dateStr: string, sessionType: SessionType): Promise<SessionInfo> {
   try {
     const sessionId = `${dateStr}_${sessionType}`;
@@ -191,12 +273,12 @@ export async function getSessionInfo(dateStr: string, sessionType: SessionType):
     if (snap.exists()) {
       const data = { id: snap.id, ...snap.data() } as SessionInfo;
       mockStore.setSession(data);
-      return data;
+      return evaluateSessionStatus(data);
     }
   } catch {
     // Fallback
   }
-  return mockStore.getSession(dateStr, sessionType);
+  return evaluateSessionStatus(mockStore.getSession(dateStr, sessionType));
 }
 
 export function subscribeSessionInfo(
@@ -208,20 +290,21 @@ export function subscribeSessionInfo(
   try {
     const sessionRef = doc(db, 'sessions', sessionId);
     const unsubscribe = onSnapshot(sessionRef, (snap) => {
+      let data: SessionInfo;
       if (snap.exists()) {
-        const data = { id: snap.id, ...snap.data() } as SessionInfo;
+        data = { id: snap.id, ...snap.data() } as SessionInfo;
         mockStore.setSession(data);
-        callback(data);
       } else {
-        callback(mockStore.getSession(dateStr, sessionType));
+        data = mockStore.getSession(dateStr, sessionType);
       }
+      callback(evaluateSessionStatus(data));
     }, (err) => {
       console.warn('Subscription session error:', err.message);
-      callback(mockStore.getSession(dateStr, sessionType));
+      callback(evaluateSessionStatus(mockStore.getSession(dateStr, sessionType)));
     });
     return unsubscribe;
   } catch (err) {
-    callback(mockStore.getSession(dateStr, sessionType));
+    callback(evaluateSessionStatus(mockStore.getSession(dateStr, sessionType)));
     return () => {};
   }
 }
@@ -258,24 +341,38 @@ export async function manageSession(
   actorEmail: string,
   dateStr: string,
   sessionType: SessionType,
-  action: 'OPEN' | 'CLOSE' | 'REOPEN',
-  lateAfter: string,
+  action: 'OPEN' | 'CLOSE' | 'REOPEN' | 'AUTO',
+  lateAfter?: string,
   reason?: string
 ): Promise<void> {
   const sessionId = `${dateStr}_${sessionType}`;
+  const cfg = getLocalSessionConfig();
+
+  const isAuto = action === 'AUTO';
   const isClosing = action === 'CLOSE';
   const newStatus = isClosing ? 'CLOSED' : 'OPEN';
 
-  const cfg = getLocalSessionConfig();
   const payload: SessionInfo = {
     id: sessionId,
     date: dateStr,
     type: sessionType,
     status: newStatus,
-    startTime: sessionType === 'PAGI' ? cfg.morningStart : cfg.dismissalStart,
-    endTime: sessionType === 'PAGI' ? cfg.morningEnd : cfg.dismissalEnd,
-    lateAfter: lateAfter || (sessionType === 'PAGI' ? cfg.morningLate : '13:00')
+    startTime: sessionType === 'PAGI' ? (cfg.morningStart || '06:30') : (cfg.dismissalStart || '12:30'),
+    endTime: sessionType === 'PAGI' ? (cfg.morningEnd || '08:00') : (cfg.dismissalEnd || '14:30'),
+    lateAfter: lateAfter || (sessionType === 'PAGI' ? cfg.morningLate : '13:00'),
+    manualOverride: !isAuto,
+    manualAction: isAuto ? null : action,
+    manualReason: reason,
+    updatedAt: new Date().toISOString()
   };
+
+  if (isClosing) {
+    payload.closedBy = actorEmail;
+    payload.closedAt = new Date().toISOString();
+  } else if (!isAuto) {
+    payload.openedBy = actorEmail;
+    payload.openedAt = new Date().toISOString();
+  }
 
   try {
     const sessionRef = doc(db, 'sessions', sessionId);
