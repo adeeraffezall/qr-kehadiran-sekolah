@@ -311,12 +311,14 @@ export function subscribeSessionInfo(
 
 export function subscribeAttendance(
   dateStr: string,
-  sessionType: SessionType,
+  sessionType: SessionType | undefined,
   callback: (records: AttendanceRecord[]) => void
 ): () => void {
   try {
     const attendanceRef = collection(db, 'attendance');
-    const q = query(attendanceRef, where('date', '==', dateStr), where('session', '==', sessionType));
+    const q = sessionType
+      ? query(attendanceRef, where('date', '==', dateStr), where('session', '==', sessionType))
+      : query(attendanceRef, where('date', '==', dateStr));
     const unsubscribe = onSnapshot(q, (snap) => {
       if (!snap.empty) {
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));

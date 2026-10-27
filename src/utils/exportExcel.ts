@@ -324,18 +324,55 @@ export function exportDailyReportToExcel(data: DailyExportData): void {
 
   let bil = 1;
   data.students.forEach(s => {
-    const records = attendanceByStudent.get(s.id) || [];
-    const primaryRecord = records[0];
-    const isPulang = data.sessionFilter === 'PULANG' || primaryRecord?.session === 'PULANG';
+    const studentRecords = attendanceByStudent.get(s.id) || [];
+    const pagiRecord = studentRecords.find(r => r.session === 'PAGI');
+    const pulangRecord = studentRecords.find(r => r.session === 'PULANG');
+    const isMorningPresent = !!pagiRecord && (pagiRecord.status === 'HADIR' || pagiRecord.status === 'LEWAT');
 
-    let status = 'TIDAK_HADIR';
-    if (primaryRecord) {
-      status = isPulang ? 'PULANG' : primaryRecord.status;
-    } else if (isPulang) {
-      status = 'BELUM_PULANG';
+    let status = 'TIADA_REKOD_MASUK';
+    let scanTime = '-';
+    let sessionCol = data.sessionFilter;
+    let source = '-';
+    let notes = '-';
+
+    if (data.sessionFilter === 'PULANG') {
+      if (pulangRecord && isMorningPresent) {
+        status = 'TELAH_PULANG';
+        scanTime = formatDisplayTime(pulangRecord.scannedAt);
+        source = pulangRecord.source || '-';
+        notes = pulangRecord.correctionReason || '-';
+      } else if (pulangRecord && !isMorningPresent) {
+        status = 'PULANG (TIADA REKOD PAGI)';
+        scanTime = formatDisplayTime(pulangRecord.scannedAt);
+        source = pulangRecord.source || '-';
+        notes = pulangRecord.correctionReason ? `✏️ ${pulangRecord.correctionReason}` : '⚠️ Rekod pulang tanpa imbasan masuk pagi';
+      } else if (!pulangRecord && isMorningPresent) {
+        status = 'BELUM_PULANG';
+        scanTime = pagiRecord ? `Masuk: ${formatDisplayTime(pagiRecord.scannedAt)}` : '-';
+        source = pagiRecord?.source || '-';
+        notes = pagiRecord?.correctionReason || 'Hadir pagi, belum imbas pulang';
+      } else if (pagiRecord?.status === 'TIDAK_HADIR') {
+        status = 'TIDAK_HADIR_DISAHKAN';
+        notes = pagiRecord?.correctionReason || 'Ketidakhadiran disahkan';
+      } else {
+        status = 'TIADA_REKOD_MASUK';
+        notes = 'Tiada imbasan masuk sesi pagi';
+      }
+    } else {
+      const primaryRecord = pagiRecord || pulangRecord || studentRecords[0];
+      if (primaryRecord) {
+        status = primaryRecord.status;
+        scanTime = formatDisplayTime(primaryRecord.scannedAt);
+        sessionCol = primaryRecord.session;
+        source = primaryRecord.source || '-';
+        notes = primaryRecord.correctionReason || '-';
+      } else {
+        status = 'BELUM_HADIR';
+        sessionCol = 'PAGI';
+      }
     }
-    
-    if (status === 'HADIR' || status === 'PULANG') hadirCount++;
+
+    if (status === 'HADIR' || status === 'TELAH_PULANG' || status === 'PULANG') hadirCount++;
     else if (status === 'LEWAT') lewatCount++;
     else tidakHadirCount++;
 
@@ -346,10 +383,10 @@ export function exportDailyReportToExcel(data: DailyExportData): void {
       sanitizeCellValue(classMap.get(s.classId) || s.className || '-'),
       sanitizeCellValue(s.gender || '-'),
       sanitizeCellValue(status),
-      sanitizeCellValue(primaryRecord ? formatDisplayTime(primaryRecord.scannedAt) : '-'),
-      sanitizeCellValue(primaryRecord ? primaryRecord.session : (isPulang ? 'PULANG' : '-')),
-      sanitizeCellValue(primaryRecord ? primaryRecord.source : '-'),
-      sanitizeCellValue(primaryRecord?.correctionReason || '-')
+      sanitizeCellValue(scanTime),
+      sanitizeCellValue(sessionCol),
+      sanitizeCellValue(source),
+      sanitizeCellValue(notes)
     ]);
   });
 

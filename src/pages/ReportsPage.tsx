@@ -47,6 +47,7 @@ import {
   CheckCircle,
   HelpCircle,
   Filter,
+  AlertCircle,
   Presentation
 } from 'lucide-react';
 
@@ -73,7 +74,7 @@ export const ReportsPage: React.FC = () => {
   // A. Harian
   const [dailyDate, setDailyDate] = useState<string>(todayStr);
   const [dailySession, setDailySession] = useState<'SEMUA' | 'PAGI' | 'PULANG'>('SEMUA');
-  const [dailyStatusFilter, setDailyStatusFilter] = useState<'SEMUA' | 'HADIR' | 'LEWAT' | 'TIDAK_HADIR'>('SEMUA');
+  const [dailyStatusFilter, setDailyStatusFilter] = useState<'SEMUA' | 'HADIR' | 'LEWAT' | 'TIDAK_HADIR' | 'BELUM_PULANG' | 'TIADA_REKOD'>('SEMUA');
 
   // B. Mingguan
   const [weekAnchorDate, setWeekAnchorDate] = useState<string>(todayStr);
@@ -359,14 +360,26 @@ export const ReportsPage: React.FC = () => {
 
       // Tapis status jika mod HARIAN
       if (reportType === 'HARIAN' && dailyStatusFilter !== 'SEMUA') {
-        const stat = studentStatsMap.get(s.id);
-        const hasHadir = (stat?.hadir || 0) > 0;
-        const hasLewat = (stat?.lewat || 0) > 0;
-        const isPresent = hasHadir || hasLewat;
+        if (dailySession === 'PULANG') {
+          const pagi = filteredRecords.find(r => r.studentId === s.id && r.date === dailyDate && r.session === 'PAGI');
+          const pulang = filteredRecords.find(r => r.studentId === s.id && r.date === dailyDate && r.session === 'PULANG');
+          const hasMorning = !!pagi && (pagi.status === 'HADIR' || pagi.status === 'LEWAT');
+          const hasPulang = !!pulang;
 
-        if (dailyStatusFilter === 'HADIR' && !hasHadir) return false;
-        if (dailyStatusFilter === 'LEWAT' && !hasLewat) return false;
-        if (dailyStatusFilter === 'TIDAK_HADIR' && isPresent) return false;
+          if (dailyStatusFilter === 'HADIR' && !hasPulang) return false;
+          if (dailyStatusFilter === 'BELUM_PULANG' && (!hasMorning || hasPulang)) return false;
+          if (dailyStatusFilter === 'TIADA_REKOD' && (hasMorning || hasPulang)) return false;
+          if (dailyStatusFilter === 'TIDAK_HADIR' && (pagi?.status !== 'TIDAK_HADIR' || hasPulang)) return false;
+        } else {
+          const stat = studentStatsMap.get(s.id);
+          const hasHadir = (stat?.hadir || 0) > 0;
+          const hasLewat = (stat?.lewat || 0) > 0;
+          const isPresent = hasHadir || hasLewat;
+
+          if (dailyStatusFilter === 'HADIR' && !hasHadir) return false;
+          if (dailyStatusFilter === 'LEWAT' && !hasLewat) return false;
+          if (dailyStatusFilter === 'TIDAK_HADIR' && isPresent) return false;
+        }
       }
 
       // Tapis status kelayakan bulanan/sela masa
@@ -1019,12 +1032,21 @@ export const ReportsPage: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setDailyStatusFilter('TIDAK_HADIR')}
+                      onClick={() => setDailyStatusFilter('BELUM_PULANG')}
                       className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                        dailyStatusFilter === 'TIDAK_HADIR' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                        dailyStatusFilter === 'BELUM_PULANG' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
                       }`}
                     >
                       Belum Pulang
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDailyStatusFilter('TIADA_REKOD')}
+                      className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${
+                        dailyStatusFilter === 'TIADA_REKOD' ? 'bg-slate-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      Tiada Rekod Masuk
                     </button>
                   </>
                 ) : (
@@ -1296,43 +1318,92 @@ export const ReportsPage: React.FC = () => {
                     </tr>
                   ) : (
                     filteredStudents.map((s, idx) => {
-                      const stat = studentStatsMap.get(s.id);
-                      const recs = stat?.records || [];
-                      const primaryRec = recs[0];
-                      const isPresent = recs.length > 0;
-                      const isLate = recs.some(r => r.status === 'LEWAT');
-                      const isPulang = dailySession === 'PULANG' || primaryRec?.session === 'PULANG';
+                      const pagi = filteredRecords.find(r => r.studentId === s.id && r.date === dailyDate && r.session === 'PAGI');
+                      const pulang = filteredRecords.find(r => r.studentId === s.id && r.date === dailyDate && r.session === 'PULANG');
+                      const isMorningPresent = !!pagi && (pagi.status === 'HADIR' || pagi.status === 'LEWAT');
+                      const isMorningLate = pagi?.status === 'LEWAT';
+                      const hasPulang = !!pulang;
 
-                      let badge = (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-rose-100 text-rose-800 border border-rose-200">
-                          <XCircle className="w-3 h-3" />
-                          {isPulang ? 'Belum Pulang' : 'Tidak Hadir'}
-                        </span>
-                      );
+                      let badge: React.ReactNode;
+                      let displayRec: AttendanceRecord | undefined;
 
-                      if (isPulang) {
-                        if (isPresent) {
+                      if (dailySession === 'PULANG') {
+                        if (hasPulang && isMorningPresent) {
                           badge = (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-indigo-100 text-indigo-800 border border-indigo-200">
                               <CheckCircle2 className="w-3 h-3" />
-                              PULANG
+                              TELAH PULANG
                             </span>
                           );
+                          displayRec = pulang;
+                        } else if (hasPulang && !isMorningPresent) {
+                          badge = (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-purple-100 text-purple-900 border border-purple-300" title="Murid pulang tanpa rekod masuk pagi">
+                              <AlertCircle className="w-3 h-3" />
+                              PULANG (TIADA REKOD PAGI)
+                            </span>
+                          );
+                          displayRec = pulang;
+                        } else if (!hasPulang && isMorningPresent) {
+                          badge = (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-amber-100 text-amber-900 border border-amber-300">
+                              <Clock className="w-3 h-3" />
+                              BELUM PULANG
+                            </span>
+                          );
+                          displayRec = pagi;
+                        } else if (pagi?.status === 'TIDAK_HADIR') {
+                          badge = (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-semibold text-xs bg-red-100 text-red-800 border border-red-200">
+                              <XCircle className="w-3 h-3" />
+                              TIDAK HADIR DISAHKAN
+                            </span>
+                          );
+                          displayRec = pagi;
+                        } else {
+                          badge = (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-medium text-xs bg-slate-100 text-slate-500 border border-slate-200">
+                              <XCircle className="w-3 h-3" />
+                              TIADA REKOD MASUK
+                            </span>
+                          );
+                          displayRec = undefined;
                         }
-                      } else if (isLate) {
-                        badge = (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-amber-100 text-amber-800 border border-amber-200">
-                            <Clock className="w-3 h-3" />
-                            Lewat
-                          </span>
-                        );
-                      } else if (isPresent) {
-                        badge = (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Hadir Tepat
-                          </span>
-                        );
+                      } else {
+                        // Sesi PAGI atau SEMUA
+                        if (isMorningLate) {
+                          badge = (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-amber-100 text-amber-800 border border-amber-200">
+                              <Clock className="w-3 h-3" />
+                              Lewat
+                            </span>
+                          );
+                          displayRec = pagi;
+                        } else if (isMorningPresent) {
+                          badge = (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Hadir Tepat
+                            </span>
+                          );
+                          displayRec = pagi;
+                        } else if (pagi?.status === 'TIDAK_HADIR') {
+                          badge = (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-semibold text-xs bg-red-100 text-red-800 border border-red-200">
+                              <XCircle className="w-3 h-3" />
+                              Tidak Hadir Disahkan
+                            </span>
+                          );
+                          displayRec = pagi;
+                        } else {
+                          badge = (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-medium text-xs bg-slate-100 text-slate-500 border border-slate-200">
+                              <XCircle className="w-3 h-3" />
+                              Belum Hadir
+                            </span>
+                          );
+                          displayRec = undefined;
+                        }
                       }
 
                       return (
@@ -1348,15 +1419,15 @@ export const ReportsPage: React.FC = () => {
                           <td className="py-3 px-4 font-semibold text-blue-700">{s.className}</td>
                           <td className="py-3 px-4 text-center">{badge}</td>
                           <td className="py-3 px-4 text-center font-mono text-slate-700">
-                            {primaryRec ? formatDisplayTime(primaryRec.scannedAt) : '-'}
+                            {displayRec ? formatDisplayTime(displayRec.scannedAt) : '-'}
                           </td>
                           <td className="py-3 px-4 text-center font-semibold text-slate-600">
-                            {primaryRec ? primaryRec.session : '-'}
+                            {dailySession === 'PULANG' ? (displayRec?.session || 'PULANG') : (displayRec?.session || 'PAGI')}
                           </td>
                           <td className="py-3 px-4 text-center">
-                            {primaryRec ? (
+                            {displayRec ? (
                               <span className="px-2 py-0.5 bg-slate-100 rounded text-[11px] font-mono text-slate-600 border border-slate-200">
-                                {primaryRec.source}
+                                {displayRec.source}
                               </span>
                             ) : '-'}
                           </td>
