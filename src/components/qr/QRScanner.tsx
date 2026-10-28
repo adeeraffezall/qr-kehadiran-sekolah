@@ -21,9 +21,16 @@ import { Badge } from '../ui/Badge';
 interface QRScannerProps {
   onScan: (token: string) => Promise<ScanResult>;
   currentSession: SessionType;
+  isSessionOpen?: boolean;
+  sessionReason?: string;
 }
 
-export const QRScanner: React.FC<QRScannerProps> = ({ onScan, currentSession }) => {
+export const QRScanner: React.FC<QRScannerProps> = ({ 
+  onScan, 
+  currentSession,
+  isSessionOpen = true,
+  sessionReason
+}) => {
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const [isScanning, setIsScanning] = useState<boolean>(false);
@@ -135,6 +142,19 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, currentSession }) 
 
     lastScannedTokenRef.current = decodedText;
     scanCoolDownRef.current = now;
+
+    // Sekiranya sesi disahkan ditutup, tolak serta-merta dengan maklum balas audio/visual
+    if (isSessionOpen === false) {
+      const deniedMsg = sessionReason || `Sesi ${currentSession} telah ditutup. Imbasan tidak diproses.`;
+      setLastResult({
+        success: false,
+        code: 'SESSION_CLOSED',
+        message: deniedMsg
+      });
+      playBeep('error');
+      triggerVibration('error');
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -279,10 +299,16 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, currentSession }) 
                 <span>Tutup</span>
               </button>
 
-              {/* Lencana Sesi Kehadiran */}
-              <div className="px-3.5 py-1 bg-blue-600/90 backdrop-blur-md text-white text-xs font-extrabold rounded-full border border-blue-400/40 shadow-lg tracking-wide uppercase flex items-center space-x-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block mr-1"></span>
-                <span>SESI {currentSession}</span>
+              {/* Lencana Sesi Kehadiran Dinamik */}
+              <div className={`px-3.5 py-1 backdrop-blur-md text-white text-xs font-extrabold rounded-full border shadow-lg tracking-wide uppercase flex items-center space-x-1 ${
+                isSessionOpen
+                  ? (currentSession === 'PULANG' ? 'bg-indigo-600/90 border-indigo-400/40' : 'bg-blue-600/90 border-blue-400/40')
+                  : 'bg-red-600/90 border-red-400/40'
+              }`}>
+                <span className={`w-2 h-2 rounded-full inline-block mr-1 ${
+                  isSessionOpen ? 'bg-emerald-400 animate-pulse' : 'bg-red-300'
+                }`}></span>
+                <span>{isSessionOpen ? `SESI AKTIF: ${currentSession}` : `SESI DITUTUP (${currentSession})`}</span>
               </div>
 
               {/* Kawalan Kamera & Bunyi */}
@@ -327,9 +353,13 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, currentSession }) 
               </div>
 
               {/* Panduan Teks Di Bawah Kotak */}
-              <div className="mt-5 px-4 py-1.5 bg-black/60 backdrop-blur-md rounded-full border border-white/15 text-white/90 text-xs font-medium tracking-wide flex items-center space-x-1.5 shadow-lg">
+              <div className={`mt-5 px-4 py-1.5 backdrop-blur-md rounded-full border text-xs font-medium tracking-wide flex items-center space-x-1.5 shadow-lg ${
+                isSessionOpen 
+                  ? 'bg-black/60 border-white/15 text-white/90' 
+                  : 'bg-red-950/80 border-red-500/50 text-red-200'
+              }`}>
                 <Scan className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Halakan kotak sasaran ke Kod QR Murid</span>
+                <span>{isSessionOpen ? 'Halakan kotak sasaran ke Kod QR Murid' : 'Sesi ditutup — Imbasan baharu disekat'}</span>
               </div>
             </div>
 

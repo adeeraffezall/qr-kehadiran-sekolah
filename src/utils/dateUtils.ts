@@ -22,6 +22,42 @@ export function getMalaysianCurrentTime(): string {
   return formatter.format(new Date()); // Format: HH:mm
 }
 
+/**
+ * Menukar rentetan masa format HH:mm kepada jumlah minit daripada tengah malam.
+ * Menghapuskan ralat leksikografi rentetan (contoh: '12:30' vs '8:00').
+ */
+export function timeToMinutes(timeStr: string): number {
+  if (!timeStr || typeof timeStr !== 'string') return 0;
+  const parts = timeStr.trim().split(':');
+  if (parts.length < 2) return 0;
+  const hours = parseInt(parts[0], 10) || 0;
+  const minutes = parseInt(parts[1], 10) || 0;
+  return hours * 60 + minutes;
+}
+
+/**
+ * Menormalkan rentetan masa kepada format 24-jam standard dua digit (HH:mm).
+ * Contoh: '8:00' -> '08:00', '6:30' -> '06:30'.
+ */
+export function normalizeTimeString(timeStr: string): string {
+  if (!timeStr || typeof timeStr !== 'string') return '00:00';
+  const parts = timeStr.trim().split(':');
+  if (parts.length < 2) return '00:00';
+  const h = String(parseInt(parts[0], 10) || 0).padStart(2, '0');
+  const m = String(parseInt(parts[1], 10) || 0).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+/**
+ * Menyemak sama ada masa semasa berada dalam jendela masa mula dan tamat (inklusif mula, eksklusif tamat).
+ */
+export function isTimeWithinRange(currentTime: string, startTime: string, endTime: string): boolean {
+  const cur = timeToMinutes(currentTime);
+  const start = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+  return cur >= start && cur < end;
+}
+
 export function formatDisplayDate(dateStr: string): string {
   if (!dateStr) return '-';
   try {

@@ -39,6 +39,13 @@ export function getMalaysianDateTime(now: Date = new Date()): {
   return { dateStr, timeStr, fullTimeStr };
 }
 
+export function timeToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const parts = timeStr.trim().split(':');
+  if (parts.length < 2) return 0;
+  return (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+}
+
 /**
  * 1. Bootstrap Admin Pertama
  * Hanya boleh dipanggil sekiranya belum ada akaun ADMIN yang aktif dalam sistem.
@@ -156,26 +163,100 @@ export const recordAttendance = functions.https.onCall(async (data: {
 
   // Tentukan tarikh dan masa mengikut waktu Malaysia
   const { dateStr, timeStr, fullTimeStr } = getMalaysianDateTime();
-  const sessionType: SessionType = data.sessionType || (parseInt(timeStr.split(':')[0], 10) < 12 ? 'PAGI' : 'PULANG');
+  const curMinutes = timeToMinutes(timeStr);
 
-  // Semak status sesi bagi tarikh & jenis sesi ini
-  const sessionId = `${dateStr}_${sessionType}`;
-  const sessionRef = db.collection('sessions').doc(sessionId);
-  const sessionSnap = await sessionRef.get();
+  // Ambil konfigurasi waktu rasmi sekolah daripada Firestore
+  let morningStart = '06:30';
+  let morningEnd = '08:00';
+  let morningLate = '07:00';
+  let dismissalStart = '12:30';
+  let dismissalEnd = '14:30';
 
-  let lateThreshold = '07:30';
+  try {
+    const configDoc = await db.collection('settings').doc('sessionConfig').get();
+    if (configDoc.exists) {
+      const cfg = configDoc.data();
+      if (cfg?.morningStart) morningStart = cfg.morningStart;
+      if (cfg?.morningEnd) morningEnd = cfg.morningEnd;
+      if (cfg?.morningLate) morningLate = cfg.morningLate;
+      if (cfg?.dismissalStart) dismissalStart = cfg.dismissalStart;
+      if (cfg?.dismissalEnd) dismissalEnd = cfg.dismissalEnd;
+    }
+  } catch (err) {
+    console.warn('Gagal memuatkan sessionConfig di Cloud Function:', err);
+  }
 
-  if (sessionSnap.exists) {
-    const sessionData = sessionSnap.data();
-    if (sessionData?.status === 'CLOSED') {
+  const mStartMin = timeToMinutes(morningStart);
+  const mEndMin = timeToMinutes(morningEnd);
+  const dStartMin = timeToMinutes(dismissalStart);
+  const dEndMin = timeToMinutes(dismissalEnd);
+
+  // Semak status dokumen Firestore kedua-dua sesi secara bebas
+  const pagiRef = db.collection('sessions').doc(`${dateStr}_PAGI`);
+  const pulangRef = db.collection('sessions').doc(`${dateStr}_PULANG`);
+  const [pagiSnap, pulangSnap] = await Promise.all([pagiRef.get(), pulangRef.get()]);
+
+  const pagiData = pagiSnap.exists ? pagiSnap.data() : null;
+  const pulangData = pulangSnap.exists ? pulangSnap.data() : null;
+
+  // Semak sama ada sesi PAGI terbuka
+  let isPagiOpen = false;
+  if (pagiData?.manualOverride) {
+    isPagiOpen = pagiData.manualAction === 'OPEN' || pagiData.manualAction === 'REOPEN';
+  } else {
+    isPagiOpen = curMinutes >= mStartMin && curMinutes < mEndMin && pagiData?.status !== 'CLOSED';
+  }
+
+  // Semak sama ada sesi PULANG terbuka
+  let isPulangOpen = false;
+  if (pulangData?.manualOverride) {
+    isPulangOpen = pulangData.manualAction === 'OPEN' || pulangData.manualAction === 'REOPEN';
+  } else {
+    isPulangOpen = curMinutes >= dStartMin && curMinutes < dEndMin && pulangData?.status !== 'CLOSED';
+  }
+
+  // Tentukan jenis sesi (sessionType) dengan pengesahan server-side bebas
+  let sessionType: SessionType;
+  if (data.sessionType === 'PAGI') {
+    if (!isPagiOpen) {
       return {
         success: false,
         code: 'SESSION_CLOSED',
-        message: `Sesi ${sessionType} bagi tarikh ${dateStr} telah ditutup oleh pentadbir.`
+        message: curMinutes >= mEndMin
+          ? `Sesi PAGI bagi tarikh ${dateStr} telah ditutup pada jam ${morningEnd} AM.`
+          : `Sesi PAGI bagi tarikh ${dateStr} belum dibuka atau telah ditutup.`
       };
     }
-    if (sessionData?.lateAfter) {
-      lateThreshold = sessionData.lateAfter;
+    sessionType = 'PAGI';
+  } else if (data.sessionType === 'PULANG') {
+    if (!isPulangOpen) {
+      return {
+        success: false,
+        code: 'SESSION_CLOSED',
+        message: curMinutes >= dEndMin
+          ? `Sesi PULANG bagi tarikh ${dateStr} telah ditutup pada jam ${dismissalEnd}.`
+          : `Sesi PULANG bagi tarikh ${dateStr} belum dibuka atau telah ditutup.`
+      };
+    }
+    sessionType = 'PULANG';
+  } else {
+    // Klien tidak menghantar sessionType spesifik: tentukan secara dinamik
+    if (isPagiOpen && !isPulangOpen) {
+      sessionType = 'PAGI';
+    } else if (isPulangOpen && !isPagiOpen) {
+      sessionType = 'PULANG';
+    } else if (isPagiOpen && isPulangOpen) {
+      sessionType = curMinutes >= dStartMin ? 'PULANG' : 'PAGI';
+    } else {
+      return {
+        success: false,
+        code: 'SESSION_CLOSED',
+        message: curMinutes < mStartMin
+          ? `Sesi PAGI belum dibuka (bermula jam ${morningStart} AM).`
+          : (curMinutes >= mEndMin && curMinutes < dStartMin
+              ? `Sesi PAGI telah ditutup pada jam ${morningEnd} AM. Sesi PULANG bermula pada jam ${dismissalStart}.`
+              : `Semua sesi persekolahan bagi tarikh ${dateStr} telah ditutup.`)
+      };
     }
   }
 
@@ -189,9 +270,12 @@ export const recordAttendance = functions.https.onCall(async (data: {
   }
 
   // Pengiraan status kehadiran
-  let status: AttendanceStatus = 'HADIR';
-  if (sessionType === 'PAGI' && timeStr > lateThreshold) {
-    status = 'LEWAT';
+  let status: AttendanceStatus;
+  if (sessionType === 'PULANG') {
+    status = 'PULANG';
+  } else {
+    const lateThreshold = pagiData?.lateAfter || morningLate;
+    status = curMinutes > timeToMinutes(lateThreshold) ? 'LEWAT' : 'HADIR';
   }
 
   // ID Unik Rekod: ${studentId}_${date}_${session}
@@ -236,11 +320,14 @@ export const recordAttendance = functions.https.onCall(async (data: {
     });
 
     if (result.duplicate) {
+      const isPulang = sessionType === 'PULANG';
       return {
         success: false,
         duplicate: true,
         code: 'ALREADY_RECORDED',
-        message: `Kehadiran bagi ${student.fullName} (${classNameSnapshot}) untuk sesi ${sessionType} telah direkodkan sebelum ini.`,
+        message: isPulang
+          ? `Rekod kepulangan bagi ${student.fullName} (${classNameSnapshot}) telah direkodkan sebelum ini.`
+          : `Kehadiran bagi ${student.fullName} (${classNameSnapshot}) untuk sesi ${sessionType} telah direkodkan sebelum ini.`,
         student: {
           fullName: student.fullName,
           studentNumber: student.studentNumber || '',
@@ -252,10 +339,14 @@ export const recordAttendance = functions.https.onCall(async (data: {
       };
     }
 
+    const successMsg = sessionType === 'PULANG'
+      ? 'Rekod PULANG berjaya direkodkan.'
+      : (status === 'LEWAT' ? 'Kehadiran LEWAT berjaya direkodkan.' : 'Kehadiran HADIR berjaya direkodkan.');
+
     return {
       success: true,
       duplicate: false,
-      message: status === 'LEWAT' ? `Kehadiran LEWAT berjaya direkodkan.` : `Kehadiran HADIR berjaya direkodkan.`,
+      message: successMsg,
       student: {
         id: studentId,
         fullName: student.fullName,

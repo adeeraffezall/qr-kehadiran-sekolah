@@ -16,9 +16,150 @@ import { db, functions } from './firebase';
 import { AttendanceRecord, AttendanceStatus, ScanResult, SessionInfo, SessionType } from '../types';
 import { createAuditLog } from './auditService';
 import { hashTokenClient } from './qrService';
-import { getMalaysianCurrentTime, getTodayMalaysianDate } from '../utils/dateUtils';
+import { 
+  getMalaysianCurrentTime, 
+  getTodayMalaysianDate, 
+  timeToMinutes, 
+  isTimeWithinRange 
+} from '../utils/dateUtils';
 import { mockStore } from './mockDataStore';
-import { getLocalSessionConfig } from './settingsService';
+import { getLocalSessionConfig, SessionConfig } from './settingsService';
+
+export interface ActiveSessionResolution {
+  activeSession: SessionType | null; // 'PAGI' | 'PULANG' | null
+  status: 'OPEN' | 'CLOSED';
+  canScan: boolean;
+  reason: string;
+  isAutoClosed: boolean;
+  autoCloseReason?: string;
+  pagiSession: SessionInfo;
+  pulangSession: SessionInfo;
+  currentTime: string;
+  currentDate: string;
+}
+
+/**
+ * Satu Sumber Kebenaran (Single Source of Truth) bagi menentukan sesi kehadiran aktif.
+ * Mengira status sesi PAGI dan PULANG secara bebas sepenuhnya berdasarkan:
+ * 1. Tarikh dan waktu semasa Malaysia (Asia/Kuala_Lumpur)
+ * 2. Tetapan jendela waktu rasmi sekolah (morningStart, morningEnd, dismissalStart, dismissalEnd)
+ * 3. Status campur tangan manual pentadbir jika ada (manualOverride)
+ */
+export function resolveActiveAttendanceSession(
+  currentTimeStr?: string,
+  todayDateStr?: string,
+  configInput?: SessionConfig,
+  pagiInfoInput?: SessionInfo | null,
+  pulangInfoInput?: SessionInfo | null
+): ActiveSessionResolution {
+  const currentDate = todayDateStr || getTodayMalaysianDate();
+  const currentTime = currentTimeStr || getMalaysianCurrentTime();
+  const config = configInput || getLocalSessionConfig();
+
+  const defaultPagi: SessionInfo = pagiInfoInput || {
+    id: `${currentDate}_PAGI`,
+    date: currentDate,
+    type: 'PAGI',
+    startTime: config.morningStart || '06:30',
+    endTime: config.morningEnd || '08:00',
+    lateAfter: config.morningLate || '07:00',
+    status: 'OPEN'
+  };
+
+  const defaultPulang: SessionInfo = pulangInfoInput || {
+    id: `${currentDate}_PULANG`,
+    date: currentDate,
+    type: 'PULANG',
+    startTime: config.dismissalStart || '12:30',
+    endTime: config.dismissalEnd || '14:30',
+    lateAfter: '13:00',
+    status: 'OPEN'
+  };
+
+  // Nilai status kedua-dua sesi secara berasingan (independently)
+  const pagiEvaluated = evaluateSessionStatus(defaultPagi, currentTime, currentDate);
+  const pulangEvaluated = evaluateSessionStatus(defaultPulang, currentTime, currentDate);
+
+  const curMinutes = timeToMinutes(currentTime);
+  const mStart = timeToMinutes(pagiEvaluated.startTime || config.morningStart || '06:30');
+  const mEnd = timeToMinutes(pagiEvaluated.endTime || config.morningEnd || '08:00');
+  const dStart = timeToMinutes(pulangEvaluated.startTime || config.dismissalStart || '12:30');
+  const dEnd = timeToMinutes(pulangEvaluated.endTime || config.dismissalEnd || '14:30');
+
+  // Keadaan 1: Sesi Pagi DIBUKA dan Sesi Pulang DITUTUP
+  if (pagiEvaluated.status === 'OPEN' && pulangEvaluated.status === 'CLOSED') {
+    return {
+      activeSession: 'PAGI',
+      status: 'OPEN',
+      canScan: true,
+      reason: 'Sesi Pagi (Kehadiran Masuk) sedang dibuka untuk imbasan.',
+      isAutoClosed: false,
+      pagiSession: pagiEvaluated,
+      pulangSession: pulangEvaluated,
+      currentTime,
+      currentDate
+    };
+  }
+
+  // Keadaan 2: Sesi Pulang DIBUKA dan Sesi Pagi DITUTUP
+  if (pulangEvaluated.status === 'OPEN' && pagiEvaluated.status === 'CLOSED') {
+    return {
+      activeSession: 'PULANG',
+      status: 'OPEN',
+      canScan: true,
+      reason: 'Sesi Pulang (Waktu Balik) sedang dibuka untuk imbasan.',
+      isAutoClosed: false,
+      pagiSession: pagiEvaluated,
+      pulangSession: pulangEvaluated,
+      currentTime,
+      currentDate
+    };
+  }
+
+  // Keadaan 3: Kedua-dua sesi DIBUKA (cth: Pentadbir sengaja buka kedua-duanya secara manual)
+  if (pagiEvaluated.status === 'OPEN' && pulangEvaluated.status === 'OPEN') {
+    const chosenType: SessionType = curMinutes >= dStart ? 'PULANG' : 'PAGI';
+    return {
+      activeSession: chosenType,
+      status: 'OPEN',
+      canScan: true,
+      reason: `Kedua-dua sesi dibuka secara manual. Mengutamakan Sesi ${chosenType} mengikut waktu semasa.`,
+      isAutoClosed: false,
+      pagiSession: pagiEvaluated,
+      pulangSession: pulangEvaluated,
+      currentTime,
+      currentDate
+    };
+  }
+
+  // Keadaan 4: Kedua-dua sesi DITUTUP (CLOSED)
+  let closeMsg = 'Semua sesi imbasan ditutup buat masa ini.';
+  let autoCloseReason: string = 'TIME_ELAPSED';
+
+  if (curMinutes < mStart) {
+    closeMsg = `Sesi Pagi belum dibuka (Waktu imbasan rasmi bermula pada jam ${pagiEvaluated.startTime || config.morningStart || '06:30'} AM).`;
+    autoCloseReason = 'BEFORE_START_TIME';
+  } else if (curMinutes >= mEnd && curMinutes < dStart) {
+    closeMsg = `Sesi Pagi telah ditutup pada jam ${pagiEvaluated.endTime || config.morningEnd || '08:00'} AM. Sesi Pulang bermula pada jam ${pulangEvaluated.startTime || config.dismissalStart || '12:30'} tengah hari.`;
+    autoCloseReason = 'BETWEEN_SESSIONS';
+  } else if (curMinutes >= dEnd) {
+    closeMsg = `Sesi Pulang telah ditutup pada jam ${pulangEvaluated.endTime || config.dismissalEnd || '14:30'}. Semua sesi persekolahan hari ini telah tamat.`;
+    autoCloseReason = 'AFTER_DISMISSAL';
+  }
+
+  return {
+    activeSession: null,
+    status: 'CLOSED',
+    canScan: false,
+    reason: closeMsg,
+    isAutoClosed: true,
+    autoCloseReason,
+    pagiSession: pagiEvaluated,
+    pulangSession: pulangEvaluated,
+    currentTime,
+    currentDate
+  };
+}
 
 export async function recordStudentAttendance(
   token: string, 
@@ -34,24 +175,47 @@ export async function recordStudentAttendance(
     };
   }
 
+  const dateStr = getTodayMalaysianDate();
+  const currentTime = getMalaysianCurrentTime();
+  const cfg = getLocalSessionConfig();
+
+  // Dapatkan kedua-dua sesi untuk menentukan sesi aktif secara bebas & tepat
+  const [pagiInfo, pulangInfo] = await Promise.all([
+    getSessionInfo(dateStr, 'PAGI'),
+    getSessionInfo(dateStr, 'PULANG')
+  ]);
+
+  const resolution = resolveActiveAttendanceSession(currentTime, dateStr, cfg, pagiInfo, pulangInfo);
+
+  let sessionType: SessionType;
+  if (sessionTypePreference) {
+    const prefSession = sessionTypePreference === 'PAGI' ? pagiInfo : pulangInfo;
+    if (prefSession.status === 'OPEN') {
+      sessionType = sessionTypePreference;
+    } else if (resolution.canScan && resolution.activeSession) {
+      // Keadaan klien mempunyai state sesi lapuk (cth: PAGI pada waktu petang)
+      // tetapi sistem mempunyai sesi rasmi terbuka (PULANG)
+      sessionType = resolution.activeSession;
+    } else {
+      sessionType = sessionTypePreference;
+    }
+  } else {
+    sessionType = resolution.activeSession || 'PAGI';
+  }
+
   // 1. Cuba Cloud Function jika disambung
   try {
     const recordFn = httpsCallable<{ token: string; sessionType?: SessionType }, ScanResult>(
       functions, 
       'recordAttendance'
     );
-    const response = await recordFn({ token: cleanToken, sessionType: sessionTypePreference });
+    const response = await recordFn({ token: cleanToken, sessionType });
     if (response && response.data) {
       return response.data;
     }
   } catch {
     // Teruskan ke Firestore atau Mock Store
   }
-
-  const dateStr = getTodayMalaysianDate();
-  const currentTime = getMalaysianCurrentTime();
-  const currentHour = parseInt(currentTime.split(':')[0], 10);
-  const sessionType: SessionType = sessionTypePreference || (currentHour < 12 ? 'PAGI' : 'PULANG');
 
   // Cari murid sama ada di Firestore atau mockStore
   let student: any = null;
@@ -116,7 +280,7 @@ export async function recordStudentAttendance(
   const config = getLocalSessionConfig();
   const lateThreshold = sessionInfo.lateAfter || (sessionType === 'PAGI' ? config.morningLate : '13:00');
   let status: AttendanceStatus = sessionType === 'PULANG' ? 'PULANG' : 'HADIR';
-  if (sessionType === 'PAGI' && currentTime > lateThreshold) {
+  if (sessionType === 'PAGI' && timeToMinutes(currentTime) > timeToMinutes(lateThreshold)) {
     status = 'LEWAT';
   }
 
@@ -245,12 +409,16 @@ export function evaluateSessionStatus(
   const startTime = evaluated.startTime || (evaluated.type === 'PAGI' ? '06:30' : '12:30');
   const endTime = evaluated.endTime || (evaluated.type === 'PAGI' ? '08:00' : '14:30');
 
-  if (currentTime >= endTime) {
+  const curMinutes = timeToMinutes(currentTime);
+  const startMinutes = timeToMinutes(startTime);
+  const endMinutes = timeToMinutes(endTime);
+
+  if (curMinutes >= endMinutes) {
     // Melepasi waktu tamat imbasan (cth: 08:00 pagi ke atas bagi sesi pagi) -> DITUTUP SECARA AUTOMATIK
     evaluated.status = 'CLOSED';
     evaluated.isAutoClosed = true;
     evaluated.autoCloseReason = 'TIME_ELAPSED';
-  } else if (currentTime < startTime) {
+  } else if (curMinutes < startMinutes) {
     // Sebelum waktu mula sesi imbasan (cth: sebelum 06:30 pagi)
     evaluated.status = 'CLOSED';
     evaluated.isAutoClosed = true;
@@ -352,15 +520,26 @@ export async function manageSession(
 
   const isAuto = action === 'AUTO';
   const isClosing = action === 'CLOSE';
-  const newStatus = isClosing ? 'CLOSED' : 'OPEN';
+
+  const startTime = sessionType === 'PAGI' ? (cfg.morningStart || '06:30') : (cfg.dismissalStart || '12:30');
+  const endTime = sessionType === 'PAGI' ? (cfg.morningEnd || '08:00') : (cfg.dismissalEnd || '14:30');
+  const currentTime = getMalaysianCurrentTime();
+
+  let newStatus: 'OPEN' | 'CLOSED';
+  if (isAuto) {
+    // Mod Automatik menilai status sebenar mengikut waktu semasa, tidak memaksakan 'OPEN'
+    newStatus = isTimeWithinRange(currentTime, startTime, endTime) ? 'OPEN' : 'CLOSED';
+  } else {
+    newStatus = isClosing ? 'CLOSED' : 'OPEN';
+  }
 
   const payload: SessionInfo = {
     id: sessionId,
     date: dateStr,
     type: sessionType,
     status: newStatus,
-    startTime: sessionType === 'PAGI' ? (cfg.morningStart || '06:30') : (cfg.dismissalStart || '12:30'),
-    endTime: sessionType === 'PAGI' ? (cfg.morningEnd || '08:00') : (cfg.dismissalEnd || '14:30'),
+    startTime,
+    endTime,
     lateAfter: lateAfter || (sessionType === 'PAGI' ? cfg.morningLate : '13:00'),
     manualOverride: !isAuto,
     manualAction: isAuto ? null : action,

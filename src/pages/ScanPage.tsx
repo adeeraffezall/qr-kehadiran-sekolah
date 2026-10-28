@@ -1,55 +1,141 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { QRScanner } from '../components/qr/QRScanner';
 import { 
   recordStudentAttendance, 
-  getSessionInfo, 
   subscribeSessionInfo,
-  evaluateSessionStatus 
+  resolveActiveAttendanceSession,
+  ActiveSessionResolution
 } from '../services/attendanceService';
-import { getTodayMalaysianDate } from '../utils/dateUtils';
+import { getTodayMalaysianDate, getMalaysianCurrentTime } from '../utils/dateUtils';
 import { SessionInfo, SessionType, Student } from '../types';
 import { getStudents } from '../services/studentService';
-import { Sun, Sunset, AlertCircle, Info, Sparkles, QrCode } from 'lucide-react';
+import { getLocalSessionConfig, getSessionConfig, SessionConfig } from '../services/settingsService';
+import { Sun, Sunset, AlertCircle, Info, Sparkles, CheckCircle2, ShieldAlert } from 'lucide-react';
 
 export const ScanPage: React.FC = () => {
   const { user } = useAuth();
+  const todayStr = getTodayMalaysianDate();
+
   const [selectedSession, setSelectedSession] = useState<SessionType>('PAGI');
-  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
+  const [pagiInfo, setPagiInfo] = useState<SessionInfo | null>(null);
+  const [pulangInfo, setPulangInfo] = useState<SessionInfo | null>(null);
+  const [sessionConfig, setSessionConfig] = useState<SessionConfig>(getLocalSessionConfig());
+  const [resolution, setResolution] = useState<ActiveSessionResolution | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [testResult, setTestResult] = useState<string | null>(null);
 
-  const todayStr = getTodayMalaysianDate();
-
+  // Muatkan tetapan waktu & senarai murid semasa mula
   useEffect(() => {
-    const hour = new Date().getHours();
-    setSelectedSession(hour < 12 ? 'PAGI' : 'PULANG');
+    getSessionConfig().then(setSessionConfig).catch(console.error);
     getStudents(undefined, true).then(setStudents).catch(console.error);
   }, []);
 
+  // Langgan status kedua-dua Sesi PAGI dan PULANG serentak secara masa nyata
   useEffect(() => {
-    const unsub = subscribeSessionInfo(todayStr, selectedSession, (sInfo) => {
-      setSessionInfo(sInfo);
+    const unsubPagi = subscribeSessionInfo(todayStr, 'PAGI', (info) => {
+      setPagiInfo(info);
     });
-    return () => unsub();
-  }, [selectedSession, todayStr]);
+    const unsubPulang = subscribeSessionInfo(todayStr, 'PULANG', (info) => {
+      setPulangInfo(info);
+    });
 
-  // Pemeriksaan masa berkala untuk menutup sesi secara automatik sebaik melepasi jam 8:00 pagi
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (sessionInfo) {
-        const reevaluated = evaluateSessionStatus(sessionInfo);
-        if (reevaluated.status !== sessionInfo.status || reevaluated.isAutoClosed !== sessionInfo.isAutoClosed) {
-          setSessionInfo(reevaluated);
-        }
+    return () => {
+      unsubPagi();
+      unsubPulang();
+    };
+  }, [todayStr]);
+
+  // Fungsi pengiraan sesi aktif pusat (Single Source of Truth)
+  const updateSessionResolution = useCallback(() => {
+    const currentTime = getMalaysianCurrentTime();
+    const res = resolveActiveAttendanceSession(
+      currentTime,
+      todayStr,
+      sessionConfig,
+      pagiInfo,
+      pulangInfo
+    );
+    setResolution(res);
+
+    // Pertukaran Sesi Automatik:
+    // Sekiranya sesi aktif semasa berubah (contoh: melepasi jam 12:30 PM dan Sesi Pulang bermula)
+    // dan sesi yang sedang dipilih telah ditutup, kemas kini sesi pilihan secara automatik
+    // tanpa memerlukan guru menutup kamera atau memuat semula (reload) halaman!
+    if (res.activeSession && res.activeSession !== selectedSession) {
+      const currentSelectedDoc = selectedSession === 'PAGI' ? pagiInfo : pulangInfo;
+      // Jika sesi yang dipilih sekarang telah CLOSED, alihkan ke sesi aktif baharu
+      if (!currentSelectedDoc || currentSelectedDoc.status === 'CLOSED') {
+        setSelectedSession(res.activeSession);
       }
-    }, 10000);
-    return () => clearInterval(timer);
-  }, [sessionInfo]);
+    } else if (!res.activeSession && selectedSession === 'PAGI' && pagiInfo?.status === 'CLOSED') {
+      // Jika PAGI baru ditutup dan PULANG belum tiba
+      // Kekal di pilihan semasa dengan amaran penutupan
+    }
+  }, [sessionConfig, pagiInfo, pulangInfo, selectedSession, todayStr]);
+
+  // Kemas kini resolusi setiap kali data Firestore berubah
+  useEffect(() => {
+    updateSessionResolution();
+  }, [updateSessionResolution]);
+
+  // Pemasa semakan waktu setiap 4 saat dan pendengar visibility pelayar
+  useEffect(() => {
+    const interval = setInterval(updateSessionResolution, 4000);
+
+    const handleVisibilityOrFocus = () => {
+      updateSessionResolution();
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
+  }, [updateSessionResolution]);
+
+  // Maklumat sesi yang sedang dipilih dalam UI
+  const currentSessionDoc = selectedSession === 'PAGI' 
+    ? (resolution?.pagiSession || pagiInfo) 
+    : (resolution?.pulangSession || pulangInfo);
+  const isCurrentSessionOpen = currentSessionDoc?.status === 'OPEN';
 
   const handleScan = async (token: string) => {
     const actorUid = user?.uid || 'USR_SCANNER';
-    const res = await recordStudentAttendance(token, actorUid, selectedSession);
+    const currentTime = getMalaysianCurrentTime();
+    
+    // Nilai resolusi masa nyata tepat pada saat imbasan dijalankan
+    const freshRes = resolveActiveAttendanceSession(
+      currentTime,
+      todayStr,
+      sessionConfig,
+      pagiInfo,
+      pulangInfo
+    );
+
+    // Tentukan sesi imbasan yang sah
+    let targetSession: SessionType = selectedSession;
+    const selectedDoc = selectedSession === 'PAGI' ? freshRes.pagiSession : freshRes.pulangSession;
+
+    if (selectedDoc.status === 'OPEN') {
+      targetSession = selectedSession;
+    } else if (freshRes.canScan && freshRes.activeSession) {
+      // Keadaan di mana kamera masih memaparkan sesi lama tetapi waktu sesi baharu telah aktif
+      targetSession = freshRes.activeSession;
+      setSelectedSession(freshRes.activeSession);
+    } else {
+      // Semua sesi ditutup — sekat imbasan serta-merta
+      return {
+        success: false,
+        code: 'SESSION_CLOSED',
+        message: freshRes.reason
+      };
+    }
+
+    const res = await recordStudentAttendance(token, actorUid, targetSession);
     return res;
   };
 
@@ -66,32 +152,67 @@ export const ScanPage: React.FC = () => {
   return (
     <div className="max-w-xl mx-auto space-y-4">
       
+      {/* Penunjuk Status Masa Nyata Sesi Sekolah */}
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center space-x-2">
+          <span className={`w-2.5 h-2.5 rounded-full ${
+            resolution?.canScan ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'
+          }`}></span>
+          <span className="text-xs font-bold text-slate-800">
+            {resolution?.canScan 
+              ? `SESI AKTIF: ${resolution.activeSession}` 
+              : 'SEMUA SESI DITUTUP BUAT MASA INI'}
+          </span>
+        </div>
+        <span className="text-[11px] font-medium text-slate-500">
+          Waktu Malaysia: <strong className="text-slate-700">{resolution?.currentTime || getMalaysianCurrentTime()}</strong>
+        </span>
+      </div>
+
       {/* Tab Pemilihan Sesi: Pagi atau Pulang */}
       <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs flex items-center space-x-2">
         <button
           type="button"
           onClick={() => setSelectedSession('PAGI')}
-          className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center space-x-2 transition-all ${
+          className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center space-x-2 transition-all ${
             selectedSession === 'PAGI'
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <Sun className="w-4 h-4" />
-          <span>Sesi Pagi (Kehadiran Masuk)</span>
+          <span>Sesi Pagi</span>
+          {resolution?.pagiSession?.status === 'OPEN' ? (
+            <span className="text-[10px] bg-emerald-400 text-emerald-950 px-1.5 py-0.5 rounded-md font-extrabold ml-1">
+              BUKA
+            </span>
+          ) : (
+            <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-md font-semibold ml-1">
+              TUTUP
+            </span>
+          )}
         </button>
 
         <button
           type="button"
           onClick={() => setSelectedSession('PULANG')}
-          className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center space-x-2 transition-all ${
+          className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center space-x-2 transition-all ${
             selectedSession === 'PULANG'
               ? 'bg-indigo-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <Sunset className="w-4 h-4" />
-          <span>Sesi Pulang (Waktu Balik)</span>
+          <span>Sesi Pulang</span>
+          {resolution?.pulangSession?.status === 'OPEN' ? (
+            <span className="text-[10px] bg-emerald-400 text-emerald-950 px-1.5 py-0.5 rounded-md font-extrabold ml-1">
+              BUKA
+            </span>
+          ) : (
+            <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-md font-semibold ml-1">
+              TUTUP
+            </span>
+          )}
         </button>
       </div>
 
@@ -99,34 +220,34 @@ export const ScanPage: React.FC = () => {
       <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-start space-x-2.5 text-xs text-amber-900">
         <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
         <p>
-          <strong>Peringatan Keselamatan:</strong> Imbasan kad QR adalah bukti fizikal kad telah diimbas. Guru dan staf bertugas dinasihatkan membuat <strong>pengesahan visual wajah murid</strong> semasa imbasan dijalankan.
+          <strong>Peringatan Keselamatan:</strong> Sesi imbasan diselaraskan secara automatik mengikut waktu rasmi sekolah. Pastikan guru membuat <strong>pengesahan visual wajah murid</strong> semasa imbasan dijalankan.
         </p>
       </div>
 
       {/* Status Sesi Jika Ditutup (Automatik atau Manual) */}
-      {sessionInfo && sessionInfo.status === 'CLOSED' && (
+      {currentSessionDoc && currentSessionDoc.status === 'CLOSED' && (
         <div className={`p-4 rounded-2xl text-xs flex items-start space-x-3 font-medium ${
-          sessionInfo.isAutoClosed 
+          currentSessionDoc.isAutoClosed 
             ? 'bg-amber-50 border border-amber-300 text-amber-950' 
             : 'bg-rose-50 border border-rose-300 text-rose-950'
         }`}>
           <AlertCircle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-            sessionInfo.isAutoClosed ? 'text-amber-600' : 'text-rose-600'
+            currentSessionDoc.isAutoClosed ? 'text-amber-600' : 'text-rose-600'
           }`} />
           <div className="space-y-0.5">
             <p className="font-bold">
-              {sessionInfo.isAutoClosed 
+              {currentSessionDoc.isAutoClosed 
                 ? `Sesi ${selectedSession} Ditutup Secara Automatik` 
                 : `Sesi ${selectedSession} Ditutup Secara Manual`}
             </p>
             <p className="text-[11px] leading-relaxed opacity-90">
-              {sessionInfo.isAutoClosed 
-                ? (sessionInfo.autoCloseReason === 'BEFORE_START_TIME'
-                    ? `Waktu imbasan rasmi murid bermula pada jam ${sessionInfo.startTime || '06:30'} AM. Imbasan baharu ditolak sehingga sesi dibuka.`
-                    : `Waktu imbasan rasmi murid (${sessionInfo.startTime || '06:30'} - ${sessionInfo.endTime || '08:00'}) telah tamat pada jam ${sessionInfo.endTime || '08:00'} AM. Imbasan baharu ditolak secara automatik kecuali dibuka semula oleh pentadbir.`
+              {currentSessionDoc.isAutoClosed 
+                ? (currentSessionDoc.autoCloseReason === 'BEFORE_START_TIME'
+                    ? `Waktu imbasan rasmi murid bermula pada jam ${currentSessionDoc.startTime || '06:30'} AM. Imbasan baharu ditolak sehingga sesi dibuka.`
+                    : `Waktu imbasan rasmi murid (${currentSessionDoc.startTime || '06:30'} - ${currentSessionDoc.endTime || '08:00'}) telah tamat pada jam ${currentSessionDoc.endTime || '08:00'}. Imbasan ditolak secara automatik kecuali dibuka semula oleh pentadbir.`
                   )
-                : (sessionInfo.manualReason 
-                    ? `Sesi ditutup oleh pihak pentadbir (${sessionInfo.manualReason}). Imbasan baharu ditolak.`
+                : (currentSessionDoc.manualReason 
+                    ? `Sesi ditutup oleh pihak pentadbir (${currentSessionDoc.manualReason}). Imbasan baharu ditolak.`
                     : 'Sesi telah ditutup secara manual oleh pentadbir sekolah. Imbasan baharu ditolak.'
                   )
               }
@@ -136,12 +257,12 @@ export const ScanPage: React.FC = () => {
       )}
 
       {/* Maklumat Sesi Jika Dibuka Secara Manual Oleh Pentadbir */}
-      {sessionInfo && sessionInfo.status === 'OPEN' && sessionInfo.manualOverride && (
+      {currentSessionDoc && currentSessionDoc.status === 'OPEN' && currentSessionDoc.manualOverride && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-950 text-xs flex items-center space-x-2">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0"></span>
           <span>
             <strong>Sesi Dibuka Secara Manual oleh Pentadbir</strong>
-            {sessionInfo.manualReason ? ` (${sessionInfo.manualReason})` : ''}. Imbasan kad QR dibenarkan.
+            {currentSessionDoc.manualReason ? ` (${currentSessionDoc.manualReason})` : ''}. Imbasan kad QR dibenarkan.
           </span>
         </div>
       )}
@@ -150,6 +271,8 @@ export const ScanPage: React.FC = () => {
       <QRScanner
         onScan={handleScan}
         currentSession={selectedSession}
+        isSessionOpen={isCurrentSessionOpen}
+        sessionReason={resolution?.reason}
       />
 
       {/* Ujian Imbasan Simulasi Pantas */}

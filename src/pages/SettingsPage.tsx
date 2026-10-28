@@ -3,7 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { getSchoolDaysForMonth, setSchoolDay, resetSchoolDayToKPMDefault } from '../services/calendarService';
 import { resolveSchoolDay, getKPMHoliday } from '../services/kpmCalendarEngine';
 import { getSessionConfig, saveSessionConfig } from '../services/settingsService';
-import { manageSession } from '../services/attendanceService';
+import { manageSession, getSessionInfo } from '../services/attendanceService';
 import { getMonthNameBM, getTodayMalaysianDate, isWeekend, getDayNameBM } from '../utils/dateUtils';
 import { SchoolDay } from '../types';
 import { Card } from '../components/ui/Card';
@@ -71,17 +71,20 @@ export const SettingsPage: React.FC = () => {
         dismissalEnd
       });
 
-      // Kemas kini sesi pagi aktif hari ini secara langsung
+      // Kemas kini ambang sesi pagi hari ini HANYA jika sesi tersebut sedang aktif dibuka (elakkan membuka semula sesi yang telah ditutup)
       const today = getTodayMalaysianDate();
-      await manageSession(
-        user.uid,
-        user.email || '',
-        today,
-        'PAGI',
-        'AUTO',
-        morningLate,
-        `Penetapan ambang lewat ${morningLate} pagi dari Tetapan Waktu Rasmi`
-      );
+      const currentPagi = await getSessionInfo(today, 'PAGI');
+      if (currentPagi.status === 'OPEN') {
+        await manageSession(
+          user.uid,
+          user.email || '',
+          today,
+          'PAGI',
+          currentPagi.manualOverride ? (currentPagi.manualAction || 'OPEN') : 'AUTO',
+          morningLate,
+          `Penetapan ambang lewat ${morningLate} pagi dari Tetapan Waktu Rasmi`
+        );
+      }
 
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 3500);
